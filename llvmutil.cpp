@@ -1506,6 +1506,7 @@ LLVMVectorIsLinear(llvm::Value *v, int stride) {
 }
 
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 static void
 lDumpValue(llvm::Value *v, std::set<llvm::Value *> &done) {
     if (done.find(v) != done.end())
@@ -1525,13 +1526,16 @@ lDumpValue(llvm::Value *v, std::set<llvm::Value *> &done) {
     for (unsigned i = 0; i < inst->getNumOperands(); ++i)
         lDumpValue(inst->getOperand(i), done);
 }
+#endif
 
 
 void
 LLVMDumpValue(llvm::Value *v) {
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
     std::set<llvm::Value *> done;
     lDumpValue(v, done);
     fprintf(stderr, "----\n");
+#endif
 }
 
 

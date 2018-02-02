@@ -162,6 +162,7 @@ static llvm::Pass *CreateFixBooleanSelectPass();
 static llvm::Pass *CreatePromoteLocalToPrivatePass();
 #endif /* ISPC_NVPTX_ENABLED */
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 #define DEBUG_START_PASS(NAME)                                 \
     if (g->debugPrint &&                                       \
         (getenv("FUNC") == NULL ||                             \
@@ -183,8 +184,25 @@ static llvm::Pass *CreatePromoteLocalToPrivatePass();
         bb.dump();                                             \
         fprintf(stderr, "---------------\n\n");                \
     } else /* eat semicolon */
+#else
+#define DEBUG_START_PASS(NAME)                                 \
+    if (g->debugPrint &&                                       \
+        (getenv("FUNC") == NULL ||                             \
+         !strncmp(bb.getParent()->getName().str().c_str(), getenv("FUNC"), \
+                  strlen(getenv("FUNC"))))) {                           \
+        fprintf(stderr, "Start of " NAME "\n");                \
+        fprintf(stderr, "---------------\n\n");                \
+    } else /* eat semicolon */
 
-
+#define DEBUG_END_PASS(NAME)                                   \
+    if (g->debugPrint &&                                       \
+        (getenv("FUNC") == NULL ||                             \
+         !strncmp(bb.getParent()->getName().str().c_str(), getenv("FUNC"), \
+                  strlen(getenv("FUNC"))))) {                           \
+        fprintf(stderr, "End of " NAME " %s\n", modifiedAny ? "** CHANGES **" : ""); \
+        fprintf(stderr, "---------------\n\n");                \
+    } else /* eat semicolon */
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -533,7 +551,9 @@ void
 Optimize(llvm::Module *module, int optLevel) {
     if (g->debugPrint) {
         printf("*** Code going into optimization ***\n");
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
         module->dump();
+#endif
     }
     DebugPassManager optPM;
     optPM.add(llvm::createVerifierPass(),0);
@@ -928,9 +948,10 @@ Optimize(llvm::Module *module, int optLevel) {
 
     if (g->debugPrint) {
         printf("\n*****\nFINAL OUTPUT\n*****\n");
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
         module->dump();
+#endif
     }
-
 }
 
 
@@ -4859,7 +4880,9 @@ bool
 DebugPass::runOnModule(llvm::Module &module) {
     fprintf(stderr, "%s", str_output);
     fflush(stderr);
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
     module.dump();
+#endif
     return true;
 }
 

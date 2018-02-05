@@ -1262,7 +1262,7 @@ Module::writeOutput(OutputType outputType, const char *outFileName,
           }
           else
 #endif /* ISPC_NVPTX_ENABLED */
-            if (strcasecmp(suffix, "s"))
+            if (strcasecmp(suffix, "s") && strcasecmp(suffix, "asm"))
                 fileType = "assembly";
             break;
         case Bitcode:

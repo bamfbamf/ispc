@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 #ifdef ISPC_IS_WINDOWS
 #include <stdarg.h>
 #endif
+
+_ISPC_BEGIN
 
 struct SourcePos;
 
@@ -169,5 +171,7 @@ void PrintWithWordBreaks(const char *buf, int indent, int columnWidth,
     default.
  */
 int TerminalWidth();
+
+_ISPC_END
 
 #endif // ISPC_UTIL_H

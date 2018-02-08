@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -70,6 +70,8 @@
 #else // LLVM 3.3+
   #include <llvm/IR/DataLayout.h>
 #endif
+
+_ISPC_BEGIN
 
 /** Returns the width of the terminal where the compiler is running.
     Finding this out may fail in a variety of reasonable situations (piping
@@ -657,3 +659,4 @@ VerifyDataLayoutCompatibility(const std::string &module_dl,
     return true;
 }
 
+_ISPC_END

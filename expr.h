@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,8 @@
 #include "ispc.h"
 #include "ast.h"
 #include "type.h"
+
+_ISPC_BEGIN
 
 /** @brief Expr is the abstract base class that defines the interface that
     all expression types must implement.
@@ -864,5 +866,7 @@ InitSymbol(llvm::Value *lvalue, const Type *symType, Expr *initExpr,
            FunctionEmitContext *ctx, SourcePos pos);
 
 bool PossiblyResolveFunctionOverloads(Expr *expr, const Type *type);
+
+_ISPC_END
 
 #endif // ISPC_EXPR_H

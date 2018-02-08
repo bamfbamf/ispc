@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2015, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -55,6 +55,8 @@
   #include <llvm/IR/DIBuilder.h>
 #endif
 
+_ISPC_BEGIN
+
 struct CFInfo;
 
 /** FunctionEmitContext is one of the key classes in ispc; it is used to
@@ -83,6 +85,10 @@ public:
     /** Returns the Function * corresponding to the function that we're
         currently generating code for. */
     const Function *GetFunction() const;
+
+    /** Returns a reference to the LLVMContext associated with this
+        function */
+    llvm::LLVMContext &GetContext() const;
 
     /** @name Current basic block management
         @{
@@ -758,5 +764,7 @@ private:
 
     llvm::Value *addVaryingOffsetsIfNeeded(llvm::Value *ptr, const Type *ptrType);
 };
+
+_ISPC_END
 
 #endif // ISPC_CTX_H

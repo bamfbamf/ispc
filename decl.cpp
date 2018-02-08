@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <set>
+
+_ISPC_BEGIN
 
 static void
 lPrintTypeQualifiers(int typeQualifiers) {
@@ -170,7 +172,7 @@ DeclSpecs::GetBaseType(SourcePos pos) const {
     if (soaWidth > 0) {
 #ifdef ISPC_NVPTX_ENABLED
 #if 0  /* see stmt.cpp in DeclStmt::EmitCode for work-around of SOAType Declaration */
-        if (g->target->getISA() == Target::NVPTX)
+        if (m->target->getISA() == Target::NVPTX)
         {
             Error(pos, "\"soa\" data types are currently not supported with \"nvptx\" target.");
             return NULL;
@@ -203,10 +205,10 @@ DeclSpecs::GetBaseType(SourcePos pos) const {
         else
             retType = st->GetAsSOAType(soaWidth);
 
-        if (soaWidth < g->target->getVectorWidth())
+        if (soaWidth < m->target->getVectorWidth())
             PerformanceWarning(pos, "soa<%d> width smaller than gang size %d "
                                "currently leads to inefficient code to access "
-                               "soa types.", soaWidth, g->target->getVectorWidth());
+                               "soa types.", soaWidth, m->target->getVectorWidth());
     }
 
     return retType;
@@ -745,3 +747,5 @@ GetStructTypesNamesPositions(const std::vector<StructDeclaration *> &sd,
                   "for the last member in a struct definition.");
     }
 }
+
+_ISPC_END

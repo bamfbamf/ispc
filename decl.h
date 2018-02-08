@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -56,6 +56,8 @@
 
 #include "ispc.h"
 #include <llvm/ADT/SmallVector.h>
+
+_ISPC_BEGIN
 
 struct VariableDeclaration;
 
@@ -224,5 +226,7 @@ extern void GetStructTypesNamesPositions(const std::vector<StructDeclaration *> 
                                          llvm::SmallVector<const Type *, 8> *elementTypes,
                                          llvm::SmallVector<std::string, 8> *elementNames,
                                          llvm::SmallVector<SourcePos, 8> *elementPositions);
+
+_ISPC_END
 
 #endif // ISPC_DECL_H

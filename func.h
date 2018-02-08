@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2011-2013, Intel Corporation
+  Copyright (c) 2011-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,8 @@
 #include "ispc.h"
 #include <vector>
 
+_ISPC_BEGIN
+
 class Function {
 public:
     Function(Symbol *sym, Stmt *code);
@@ -65,5 +67,7 @@ private:
     Symbol *taskIndexSym1, *taskCountSym1;
     Symbol *taskIndexSym2, *taskCountSym2;
 };
+
+_ISPC_END
 
 #endif // ISPC_FUNC_H

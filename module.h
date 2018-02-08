@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2015, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -52,13 +52,31 @@ namespace llvm
     class raw_string_ostream;
 }
 
+_ISPC_BEGIN
+
 struct DispatchHeaderInfo;
 
+/** @brief A Module instance is used to store all the information related
+    to an ISPC module.
+*/
 class Module {
 public:
+    /** The Module constructor. */
+    //Module();
+
+    /** The Module destructor. */
+    ~Module();
+
     /** The name of the source file being compiled should be passed as the
         module name. */
     Module(const char *filename);
+
+    /** The Module constructor. */
+    Module(const char *moduleID, const char *filename);
+
+
+    /** Set the target. */
+    void SetTarget(Target *target);
 
     /** Compiles the source file passed to the Module constructor, adding
         its global variables and functions to both the llvm::Module and
@@ -147,6 +165,15 @@ public:
                                 const char *hostStubFileName,
                                 const char *devStubFileName);
 
+    /** Module settings */
+    ModuleOptions* gm;
+
+    /** Compilation target information */
+    Target* target;
+
+    /** llvm Context. */
+    llvm::LLVMContext *ctx;
+
     /** Total number of errors encountered during compilation. */
     int errorCount;
 
@@ -167,7 +194,13 @@ public:
 #endif // LLVM_3_4+
 
 private:
+    /** if module owns the creation of ModuleOptions. */
+    bool gmOwner;
+
+    const char *moduleID;
+
     const char *filename;
+
     AST *ast;
 
     std::vector<std::pair<const Type *, SourcePos> > exportedTypes;
@@ -192,5 +225,7 @@ private:
 
     void execPreprocessor(const char *infilename, llvm::raw_string_ostream* ostream) const;
 };
+
+_ISPC_END
 
 #endif // ISPC_MODULE_H

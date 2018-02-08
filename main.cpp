@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2016, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -62,6 +62,8 @@
 #define ISPC_VS_VERSION "Visual Studio 2013 and earlier"
 #endif
 #endif // ISPC_IS_WINDOWS
+
+_ISPC_USING
 
 static void
 lPrintVersion() {
@@ -346,7 +348,8 @@ int main(int Argc, char *Argv[]) {
     const char *devStubFileName = NULL;
     // Initiailize globals early so that we can set various option values
     // as we're parsing below
-    g = new Globals;
+    g = new GlobalOptions;
+    gm = new ModuleOptions;
 
     Module::OutputType ot = Module::Object;
     bool generatePIC = false;
@@ -362,9 +365,9 @@ int main(int Argc, char *Argv[]) {
         else if (!strncmp(argv[i], "--addressing=", 13)) {
             if (atoi(argv[i] + 13) == 64)
                 // FIXME: this doesn't make sense on 32 bit platform.
-                g->opt.force32BitAddressing = false;
+                gm->opt.force32BitAddressing = false;
             else if (atoi(argv[i] + 13) == 32)
-                g->opt.force32BitAddressing = true;
+                gm->opt.force32BitAddressing = true;
             else {
                 fprintf(stderr, "Addressing width \"%s\" invalid--only 32 and "
                         "64 are allowed.\n", argv[i]+13);
@@ -446,13 +449,13 @@ int main(int Argc, char *Argv[]) {
         else if (!strncmp(argv[i], "--math-lib=", 11)) {
             const char *lib = argv[i] + 11;
             if (!strcmp(lib, "default"))
-                g->mathLib = Globals::Math_ISPC;
+                gm->mathLib = ModuleOptions::Math_ISPC;
             else if (!strcmp(lib, "fast"))
-                g->mathLib = Globals::Math_ISPCFast;
+                gm->mathLib = ModuleOptions::Math_ISPCFast;
             else if (!strcmp(lib, "svml"))
-                g->mathLib = Globals::Math_SVML;
+                gm->mathLib = ModuleOptions::Math_SVML;
             else if (!strcmp(lib, "system"))
-                g->mathLib = Globals::Math_System;
+                gm->mathLib = ModuleOptions::Math_System;
             else {
                 fprintf(stderr, "Unknown --math-lib= option \"%s\".\n", lib);
                 usage(1);
@@ -461,40 +464,40 @@ int main(int Argc, char *Argv[]) {
         else if (!strncmp(argv[i], "--opt=", 6)) {
             const char *opt = argv[i] + 6;
             if (!strcmp(opt, "fast-math"))
-                g->opt.fastMath = true;
+                gm->opt.fastMath = true;
             else if (!strcmp(opt, "fast-masked-vload"))
-                g->opt.fastMaskedVload = true;
+                gm->opt.fastMaskedVload = true;
             else if (!strcmp(opt, "disable-assertions"))
-                g->opt.disableAsserts = true;
+                gm->opt.disableAsserts = true;
             else if (!strcmp(opt, "disable-loop-unroll"))
-                g->opt.unrollLoops = false;
+                gm->opt.unrollLoops = false;
             else if (!strcmp(opt, "disable-fma"))
-                g->opt.disableFMA = true;
+                gm->opt.disableFMA = true;
             else if (!strcmp(opt, "force-aligned-memory"))
-                g->opt.forceAlignedMemory = true;
+                gm->opt.forceAlignedMemory = true;
 
             // These are only used for performance tests of specific
             // optimizations
             else if (!strcmp(opt, "disable-all-on-optimizations"))
-                g->opt.disableMaskAllOnOptimizations = true;
+                gm->opt.disableMaskAllOnOptimizations = true;
             else if (!strcmp(opt, "disable-coalescing"))
-                g->opt.disableCoalescing = true;
+                gm->opt.disableCoalescing = true;
             else if (!strcmp(opt, "disable-handle-pseudo-memory-ops"))
-                g->opt.disableHandlePseudoMemoryOps = true;
+                gm->opt.disableHandlePseudoMemoryOps = true;
             else if (!strcmp(opt, "disable-blended-masked-stores"))
-                g->opt.disableBlendedMaskedStores = true;
+                gm->opt.disableBlendedMaskedStores = true;
             else if (!strcmp(opt, "disable-coherent-control-flow"))
-                g->opt.disableCoherentControlFlow = true;
+                gm->opt.disableCoherentControlFlow = true;
             else if (!strcmp(opt, "disable-uniform-control-flow"))
-                g->opt.disableUniformControlFlow = true;
+                gm->opt.disableUniformControlFlow = true;
             else if (!strcmp(opt, "disable-gather-scatter-optimizations"))
-                g->opt.disableGatherScatterOptimizations = true;
+                gm->opt.disableGatherScatterOptimizations = true;
             else if (!strcmp(opt, "disable-blending-removal"))
-                g->opt.disableMaskedStoreToStore = true;
+                gm->opt.disableMaskedStoreToStore = true;
             else if (!strcmp(opt, "disable-gather-scatter-flattening"))
-                g->opt.disableGatherScatterFlattening = true;
+                gm->opt.disableGatherScatterFlattening = true;
             else if (!strcmp(opt, "disable-uniform-memory-optimizations"))
-                g->opt.disableUniformMemoryOptimizations = true;
+                gm->opt.disableUniformMemoryOptimizations = true;
             else {
                 fprintf(stderr, "Unknown --opt= option \"%s\".\n", opt);
                 usage(1);
@@ -536,18 +539,18 @@ int main(int Argc, char *Argv[]) {
             includeFileName = argv[i] + strlen("--c++-include-file=");
         }
         else if (!strcmp(argv[i], "-O0")) {
-            g->opt.level = 0;
+            gm->opt.level = 0;
         }
         else if (!strcmp(argv[i], "-O") ||  !strcmp(argv[i], "-O1") ||
                  !strcmp(argv[i], "-O2") || !strcmp(argv[i], "-O3")) {
-            g->opt.level = 1;
+            gm->opt.level = 1;
         }
         else if (!strcmp(argv[i], "-"))
             ;
         else if (!strcmp(argv[i], "--nostdlib"))
-            g->includeStdlib = false;
+            gm->includeStdlib = false;
         else if (!strcmp(argv[i], "--nocpp"))
-            g->runCPP = false;
+            gm->runCPP = false;
 #ifndef ISPC_IS_WINDOWS
         else if (!strcmp(argv[i], "--pic"))
             generatePIC = true;
@@ -642,7 +645,7 @@ int main(int Argc, char *Argv[]) {
               "Program will be compiled and warnings/errors will "
               "be issued, but no output will be generated.");
 
-    return Module::CompileAndOutput(file, arch, cpu, target, generatePIC,
+    int r = Module::CompileAndOutput(file, arch, cpu, target, generatePIC,
                                     ot,
                                     outFileName,
                                     headerFileName,
@@ -650,4 +653,9 @@ int main(int Argc, char *Argv[]) {
                                     depsFileName,
                                     hostStubFileName,
                                     devStubFileName);
+
+    delete g;
+    delete gm;
+
+    return r;
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2015, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,8 @@
 
 #include "ispc.h"
 
+_ISPC_BEGIN
+
 /** Adds declarations and definitions of ispc standard library functions
     and types to the given module.
 
@@ -58,5 +60,7 @@ void DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module
 void AddBitcodeToModule(const unsigned char *bitcode, int length,
                         llvm::Module *module, SymbolTable *symbolTable = NULL,
                         bool warn = true);
+
+_ISPC_END
 
 #endif // ISPC_STDLIB_H

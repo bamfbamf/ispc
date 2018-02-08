@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,7 @@
 #define yytnamerr lYYTNameErr
 
 
-#define YYLTYPE SourcePos
+#define YYLTYPE _ISPC_NS::SourcePos
 
 # define YYLLOC_DEFAULT(Current, Rhs, N)                               \
     do                                                                 \
@@ -68,6 +68,8 @@
 
 struct ForeachDimension;
 
+_ISPC_USING
+
 }
 
 
@@ -88,6 +90,8 @@ struct ForeachDimension;
 #else
   #include <llvm/IR/Constants.h>
 #endif
+
+_ISPC_USING
 
 #define UNIMPLEMENTED \
         Error(yylloc, "Unimplemented parser functionality %s:%d", \
@@ -2233,7 +2237,7 @@ lAddFunctionParams(Declarator *decl) {
 /** Add a symbol for the built-in mask variable to the symbol table */
 static void lAddMaskToSymbolTable(SourcePos pos) {
     const Type *t = NULL;
-    switch (g->target->getMaskBitCount()) {
+    switch (m->target->getMaskBitCount()) {
     case 1:
         t = AtomicType::VaryingBool;
         break;

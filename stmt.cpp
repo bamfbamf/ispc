@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -68,6 +68,8 @@
   #include <llvm/IR/CallingConv.h>
 #endif
 #include <llvm/Support/raw_ostream.h>
+
+_ISPC_USING
 
 ///////////////////////////////////////////////////////////////////////////
 // Stmt
@@ -145,7 +147,7 @@ lHasUnsizedArrays(const Type *type) {
 #ifdef ISPC_NVPTX_ENABLED
 static llvm::Value* lConvertToGenericPtr(FunctionEmitContext *ctx, llvm::Value *value, const SourcePos &currentPos, const bool variable = false)
 {
-  if (!value->getType()->isPointerTy() || g->target->getISA() != Target::NVPTX) 
+  if (!value->getType()->isPointerTy() || m->target->getISA() != Target::NVPTX) 
     return value;
   llvm::PointerType *pt = llvm::dyn_cast<llvm::PointerType>(value->getType());
   const int addressSpace = pt->getAddressSpace();
@@ -261,7 +263,7 @@ DeclStmt::EmitCode(FunctionEmitContext *ctx) const {
             }
         }
 
-        llvm::Type *llvmType = sym->type->LLVMType(g->ctx);
+        llvm::Type *llvmType = sym->type->LLVMType(m->ctx);
         if (llvmType == NULL) {
             AssertPos(pos, m->errorCount > 0);
             return;
@@ -269,18 +271,18 @@ DeclStmt::EmitCode(FunctionEmitContext *ctx) const {
 
         if (sym->storageClass == SC_STATIC) {
 #ifdef ISPC_NVPTX_ENABLED
-            if (g->target->getISA() == Target::NVPTX && !sym->type->IsConstType())
+            if (m->target->getISA() == Target::NVPTX && !sym->type->IsConstType())
             {
                 Error(sym->pos, 
                     "Non-constant static variable ""\"%s\" is not supported with ""\"nvptx\" target.",
                     sym->name.c_str());
                 return;
             }
-            if (g->target->getISA() == Target::NVPTX && sym->type->IsVaryingType())
+            if (m->target->getISA() == Target::NVPTX && sym->type->IsVaryingType())
                 PerformanceWarning(sym->pos, 
                     "\"const static varying\" variable ""\"%s\" is stored in __global address space with ""\"nvptx\" target.",
                     sym->name.c_str());
-            if (g->target->getISA() == Target::NVPTX && sym->type->IsUniformType())
+            if (m->target->getISA() == Target::NVPTX && sym->type->IsUniformType())
                 PerformanceWarning(sym->pos, 
                     "\"const static uniform\" variable ""\"%s\" is stored in __constant address space with ""\"nvptx\" target.",
                     sym->name.c_str());
@@ -316,7 +318,7 @@ DeclStmt::EmitCode(FunctionEmitContext *ctx) const {
             // that it persists across function calls
 #ifdef ISPC_NVPTX_ENABLED
             int addressSpace = 0;
-            if (g->target->getISA() == Target::NVPTX &&
+            if (m->target->getISA() == Target::NVPTX &&
                 sym->type->IsConstType() &&
                 sym->type->IsUniformType())
               addressSpace = 4;
@@ -353,7 +355,7 @@ DeclStmt::EmitCode(FunctionEmitContext *ctx) const {
 #if 1     
            sym->type->IsArrayType() &&
 #endif
-           g->target->getISA() == Target::NVPTX)
+           m->target->getISA() == Target::NVPTX)
           {
               PerformanceWarning(sym->pos,
                   "Non-constant \"uniform\" data types might be slow with \"nvptx\" target. "
@@ -381,7 +383,7 @@ DeclStmt::EmitCode(FunctionEmitContext *ctx) const {
               else
                 nat = new ArrayType(sym->type, nel);
 
-              llvm::Type *llvmTypeUn = nat->LLVMType(g->ctx);
+              llvm::Type *llvmTypeUn = nat->LLVMType(m->ctx);
               llvm::Constant *cinit = llvm::UndefValue::get(llvmTypeUn);
 
               sym->storagePtr =
@@ -396,7 +398,7 @@ DeclStmt::EmitCode(FunctionEmitContext *ctx) const {
                     llvm::GlobalVariable::NotThreadLocal,
                     /*AddressSpace=*/3);
               sym->storagePtr = lConvertToGenericPtr(ctx, sym->storagePtr, sym->pos, variable);
-              llvm::PointerType *ptrTy = llvm::PointerType::get(sym->type->LLVMType(g->ctx),0);
+              llvm::PointerType *ptrTy = llvm::PointerType::get(sym->type->LLVMType(m->ctx),0);
               sym->storagePtr = ctx->BitCastInst(sym->storagePtr, ptrTy, "uniform_decl");
 
               // Tell the FunctionEmitContext about the variable; must do
@@ -549,7 +551,7 @@ DeclStmt::EstimateCost() const {
 IfStmt::IfStmt(Expr *t, Stmt *ts, Stmt *fs, bool checkCoherence, SourcePos p)
     : Stmt(p, IfStmtID), test(t), trueStmts(ts), falseStmts(fs),
       doAllCheck(checkCoherence &&
-                 !g->opt.disableCoherentControlFlow) {
+                 !gm->opt.disableCoherentControlFlow) {
 }
 
 
@@ -612,7 +614,7 @@ IfStmt::EmitCode(FunctionEmitContext *ctx) const {
 
 #ifdef ISPC_NVPTX_ENABLED
 #if 0
-    if (!isUniform && g->target->getISA() == Target::NVPTX)
+    if (!isUniform && m->target->getISA() == Target::NVPTX)
     {
       /* With "nvptx" target, SIMT hardware takes care of non-uniform 
        * control flow. We trick ISPC to generate uniform control flow.
@@ -679,7 +681,7 @@ IfStmt::TypeCheck() {
         const Type *testType = test->GetType();
         if (testType != NULL) {
             bool isUniform = (testType->IsUniformType() &&
-                              !g->opt.disableUniformControlFlow);
+                              !gm->opt.disableUniformControlFlow);
             test = TypeConvertExpr(test, isUniform ? AtomicType::UniformBool :
                                                      AtomicType::VaryingBool,
                                    "\"if\" statement test");
@@ -804,7 +806,7 @@ IfStmt::emitVaryingIf(FunctionEmitContext *ctx, llvm::Value *ltest) const {
               ::EstimateCost(falseStmts), (int)SafeToRunWithMaskAllOff(falseStmts));
 
         if (safeToRunWithAllLanesOff &&
-            (costIsAcceptable || g->opt.disableCoherentControlFlow)) {
+            (costIsAcceptable || gm->opt.disableCoherentControlFlow)) {
             ctx->StartVaryingIf(oldMask);
             emitMaskedTrueAndFalse(ctx, oldMask, ltest);
             AssertPos(pos, ctx->GetCurrentBasicBlock());
@@ -830,11 +832,11 @@ IfStmt::emitMaskAllOn(FunctionEmitContext *ctx, llvm::Value *ltest,
     // compiler see what's going on so that subsequent optimizations for
     // code emitted here can operate with the knowledge that the mask is
     // definitely all on (until it modifies the mask itself).
-    AssertPos(pos, !g->opt.disableCoherentControlFlow);
-    if (!g->opt.disableMaskAllOnOptimizations)
+    AssertPos(pos, !gm->opt.disableCoherentControlFlow);
+    if (!gm->opt.disableMaskAllOnOptimizations)
         ctx->SetInternalMask(LLVMMaskAllOn);
     llvm::Value *oldFunctionMask = ctx->GetFunctionMask();
-    if (!g->opt.disableMaskAllOnOptimizations)
+    if (!gm->opt.disableMaskAllOnOptimizations)
         ctx->SetFunctionMask(LLVMMaskAllOn);
 
     // First, check the value of the test.  If it's all on, then we jump to
@@ -1042,7 +1044,7 @@ lHasVaryingBreakOrContinue(Stmt *stmt) {
 
 DoStmt::DoStmt(Expr *t, Stmt *s, bool cc, SourcePos p)
     : Stmt(p, DoStmtID), testExpr(t), bodyStmts(s),
-      doCoherentCheck(cc && !g->opt.disableCoherentControlFlow) {
+      doCoherentCheck(cc && !gm->opt.disableCoherentControlFlow) {
 }
 
 
@@ -1091,10 +1093,10 @@ void DoStmt::EmitCode(FunctionEmitContext *ctx) const {
         // IfStmt::emitCoherentTests()), and then emit the code for the
         // loop body.
         ctx->SetCurrentBasicBlock(bAllOn);
-        if (!g->opt.disableMaskAllOnOptimizations)
+        if (!gm->opt.disableMaskAllOnOptimizations)
             ctx->SetInternalMask(LLVMMaskAllOn);
         llvm::Value *oldFunctionMask = ctx->GetFunctionMask();
-        if (!g->opt.disableMaskAllOnOptimizations)
+        if (!gm->opt.disableMaskAllOnOptimizations)
             ctx->SetFunctionMask(LLVMMaskAllOn);
         if (bodyStmts)
             bodyStmts->EmitCode(ctx);
@@ -1177,7 +1179,7 @@ DoStmt::TypeCheck() {
         //   actually want to be running, accounting for breaks/continues.
         //
         bool uniformTest = (testType->IsUniformType() &&
-                            !g->opt.disableUniformControlFlow &&
+                            !gm->opt.disableUniformControlFlow &&
                             !lHasVaryingBreakOrContinue(bodyStmts));
         testExpr = TypeConvertExpr(testExpr, uniformTest ? AtomicType::UniformBool :
                                                            AtomicType::VaryingBool,
@@ -1191,7 +1193,7 @@ DoStmt::TypeCheck() {
 int
 DoStmt::EstimateCost() const {
     bool uniformTest = testExpr ? testExpr->GetType()->IsUniformType() :
-        (!g->opt.disableUniformControlFlow &&
+        (!gm->opt.disableUniformControlFlow &&
          !lHasVaryingBreakOrContinue(bodyStmts));
 
     return uniformTest ? COST_UNIFORM_LOOP : COST_VARYING_LOOP;
@@ -1218,7 +1220,7 @@ DoStmt::Print(int indent) const {
 
 ForStmt::ForStmt(Stmt *i, Expr *t, Stmt *s, Stmt *st, bool cc, SourcePos p)
     : Stmt(p, ForStmtID), init(i), test(t), step(s), stmts(st),
-      doCoherentCheck(cc && !g->opt.disableCoherentControlFlow) {
+      doCoherentCheck(cc && !gm->opt.disableCoherentControlFlow) {
 }
 
 
@@ -1233,7 +1235,7 @@ ForStmt::EmitCode(FunctionEmitContext *ctx) const {
     llvm::BasicBlock *bexit = ctx->CreateBasicBlock("for_exit");
 
     bool uniformTest = test ? test->GetType()->IsUniformType() :
-        (!g->opt.disableUniformControlFlow &&
+        (!gm->opt.disableUniformControlFlow &&
          !lHasVaryingBreakOrContinue(stmts));
 
     ctx->StartLoop(bexit, bstep, uniformTest);
@@ -1301,10 +1303,10 @@ ForStmt::EmitCode(FunctionEmitContext *ctx) const {
         // the runtime test has passed, make this fact clear for code
         // generation at compile time here.)
         ctx->SetCurrentBasicBlock(bAllOn);
-        if (!g->opt.disableMaskAllOnOptimizations)
+        if (!gm->opt.disableMaskAllOnOptimizations)
             ctx->SetInternalMask(LLVMMaskAllOn);
         llvm::Value *oldFunctionMask = ctx->GetFunctionMask();
-        if (!g->opt.disableMaskAllOnOptimizations)
+        if (!gm->opt.disableMaskAllOnOptimizations)
             ctx->SetFunctionMask(LLVMMaskAllOn);
         if (stmts)
             stmts->EmitCode(ctx);
@@ -1360,7 +1362,7 @@ ForStmt::TypeCheck() {
         // See comments in DoStmt::TypeCheck() regarding
         // 'uniformTest' and the type conversion here.
         bool uniformTest = (testType->IsUniformType() &&
-                            !g->opt.disableUniformControlFlow &&
+                            !gm->opt.disableUniformControlFlow &&
                             !lHasVaryingBreakOrContinue(stmts));
         test = TypeConvertExpr(test, uniformTest ? AtomicType::UniformBool :
                                                    AtomicType::VaryingBool,
@@ -1376,7 +1378,7 @@ ForStmt::TypeCheck() {
 int
 ForStmt::EstimateCost() const {
     bool uniformTest = test ? test->GetType()->IsUniformType() :
-        (!g->opt.disableUniformControlFlow &&
+        (!gm->opt.disableUniformControlFlow &&
          !lHasVaryingBreakOrContinue(stmts));
 
     return uniformTest ? COST_UNIFORM_LOOP : COST_VARYING_LOOP;
@@ -1505,7 +1507,7 @@ lUpdateVaryingCounter(int dim, int nDims, FunctionEmitContext *ctx,
                       llvm::Value *varyingCounterPtr,
                       const std::vector<int> &spans) {
 #ifdef ISPC_NVPTX_ENABLED
-    if (g->target->getISA() == Target::NVPTX)
+    if (m->target->getISA() == Target::NVPTX)
     {
       // Smear the uniform counter value out to be varying
       llvm::Value *counter = ctx->LoadInst(uniformCounterPtr);
@@ -1571,7 +1573,7 @@ lUpdateVaryingCounter(int dim, int nDims, FunctionEmitContext *ctx,
       llvm::LoadInst* int8_39 = new llvm::LoadInst(ptr_arrayidx, "", false, ctx->GetCurrentBasicBlock());
       llvm::Value * int32_39 = ctx->ZExtInst(int8_39, LLVMTypes::Int32Type);
 
-      llvm::VectorType* VectorTy_2 = llvm::VectorType::get(llvm::IntegerType::get(*g->ctx, 32), 1);
+      llvm::VectorType* VectorTy_2 = llvm::VectorType::get(llvm::IntegerType::get(*m->ctx, 32), 1);
       llvm::UndefValue* const_packed_41 = llvm::UndefValue::get(VectorTy_2);
 
       llvm::InsertElementInst* packed_43 = llvm::InsertElementInst::Create(
@@ -1609,7 +1611,7 @@ lUpdateVaryingCounter(int dim, int nDims, FunctionEmitContext *ctx,
     // (0,1,2,3,0,1,2,3), and for the outer dimension we want
     // (0,0,0,0,1,1,1,1).
     int32_t delta[ISPC_MAX_NVEC];
-    for (int i = 0; i < g->target->getVectorWidth(); ++i) {
+    for (int i = 0; i < m->target->getVectorWidth(); ++i) {
         int d = i;
         // First, account for the effect of any dimensions at deeper
         // nesting levels than the current one.
@@ -1719,10 +1721,10 @@ ForeachStmt::EmitCode(FunctionEmitContext *ctx) const {
     std::vector<int> span(nDims, 0);
 #ifdef ISPC_NVPTX_ENABLED
     const int vectorWidth = 
-      g->target->getISA() == Target::NVPTX ? 32 : g->target->getVectorWidth();
+      m->target->getISA() == Target::NVPTX ? 32 : m->target->getVectorWidth();
     lGetSpans(nDims-1, nDims, vectorWidth, isTiled, &span[0]);
 #else /* ISPC_NVPTX_ENABLED */
-    lGetSpans(nDims-1, nDims, g->target->getVectorWidth(), isTiled, &span[0]);
+    lGetSpans(nDims-1, nDims, m->target->getVectorWidth(), isTiled, &span[0]);
 #endif /* ISPC_NVPTX_ENABLED */
 
     for (int i = 0; i < nDims; ++i) {
@@ -2329,7 +2331,7 @@ ForeachActiveStmt::EmitCode(FunctionEmitContext *ctx) const {
 
         // Get the "program index" vector value
 #ifdef ISPC_NVPTX_ENABLED
-        llvm::Value *programIndex = g->target->getISA() == Target::NVPTX ?
+        llvm::Value *programIndex = m->target->getISA() == Target::NVPTX ?
           ctx->ProgramIndexVectorPTX() : ctx->ProgramIndexVector();
 #else /* ISPC_NVPTX_ENABLED */
         llvm::Value *programIndex = ctx->ProgramIndexVector();
@@ -2459,7 +2461,7 @@ ForeachUniqueStmt::EmitCode(FunctionEmitContext *ctx) const {
         Assert(m->errorCount > 0);
         return;
     }
-    llvm::Type *symType = sym->type->LLVMType(g->ctx);
+    llvm::Type *symType = sym->type->LLVMType(m->ctx);
     if (symType == NULL) {
         Assert(m->errorCount > 0);
         return;
@@ -2531,7 +2533,7 @@ ForeachUniqueStmt::EmitCode(FunctionEmitContext *ctx) const {
         // memory storing the value of the varying expr.
         llvm::Value *uniqueValue;
 #ifdef ISPC_NVPTX_ENABLED
-        if (g->target->getISA() == Target::NVPTX)
+        if (m->target->getISA() == Target::NVPTX)
         {
           llvm::Value *firstSet32 = ctx->TruncInst(firstSet, LLVMTypes::Int32Type);
           uniqueValue = ctx->Extract(exprValue, firstSet32);
@@ -3371,7 +3373,7 @@ lProcessPrintArg(Expr *expr, FunctionEmitContext *ctx, std::string &argTypes) {
         }
         argTypes.push_back(t);
 
-        llvm::Type *llvmExprType = type->LLVMType(g->ctx);
+        llvm::Type *llvmExprType = type->LLVMType(m->ctx);
         llvm::Value *ptr = ctx->AllocaInst(llvmExprType, "print_arg");
         llvm::Value *val = expr->GetValue(ctx);
         if (!val)
@@ -3459,7 +3461,7 @@ PrintStmt::EmitCode(FunctionEmitContext *ctx) const {
 
     // Now we can emit code to call __do_print()
 #ifdef ISPC_NVPTX_ENABLED
-    llvm::Function *printFunc = g->target->getISA() != Target::NVPTX ?
+    llvm::Function *printFunc = m->target->getISA() != Target::NVPTX ?
       m->module->getFunction("__do_print") : m->module->getFunction("__do_print_nvptx");
 #else /* ISPC_NVPTX_ENABLED */
     llvm::Function *printFunc = m->module->getFunction("__do_print");
@@ -3470,7 +3472,7 @@ PrintStmt::EmitCode(FunctionEmitContext *ctx) const {
     // Set up the rest of the parameters to it
     args[0] = ctx->GetStringPtr(format);
     args[1] = ctx->GetStringPtr(argTypes);
-    args[2] = LLVMInt32(g->target->getVectorWidth());
+    args[2] = LLVMInt32(m->target->getVectorWidth());
     args[3] = ctx->LaneMask(mask);
     std::vector<llvm::Value *> argVec(&args[0], &args[5]);
     ctx->CallInst(printFunc, NULL, argVec, "");
@@ -3610,7 +3612,7 @@ DeleteStmt::EmitCode(FunctionEmitContext *ctx) const {
         exprValue = ctx->BitCastInst(exprValue, LLVMTypes::VoidPointerType,
                                      "ptr_to_void");
         llvm::Function *func;
-        if (g->target->is32Bit()) {
+        if (m->target->is32Bit()) {
             func = m->module->getFunction("__delete_uniform_32rt");
         } else {
             func = m->module->getFunction("__delete_uniform_64rt");
@@ -3625,13 +3627,13 @@ DeleteStmt::EmitCode(FunctionEmitContext *ctx) const {
         // only need to extend to 64-bit values on 32-bit targets before
         // calling it.
         llvm::Function *func;
-        if (g->target->is32Bit()) {
+        if (m->target->is32Bit()) {
             func = m->module->getFunction("__delete_varying_32rt");
         } else {
             func = m->module->getFunction("__delete_varying_64rt");
         }
         AssertPos(pos, func != NULL);
-        if (g->target->is32Bit())
+        if (m->target->is32Bit())
             exprValue = ctx->ZExtInst(exprValue, LLVMTypes::Int64VectorType,
                                       "ptr_to_64");
         ctx->CallInst(func, NULL, exprValue, "");

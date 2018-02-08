@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2016, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -94,7 +94,10 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/Host.h>
 
-Globals *g;
+_ISPC_BEGIN
+
+GlobalOptions *g;
+ModuleOptions *gm;
 Module *m;
 
 ///////////////////////////////////////////////////////////////////////////
@@ -469,7 +472,8 @@ public:
 };
 
 
-Target::Target(const char *arch, const char *cpu, const char *isa, bool pic, bool printTarget, std::string genericAsSmth) :
+Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
+               bool printTarget, std::string genericAsSmth) :
     m_target(NULL),
     m_targetMachine(NULL),
     m_dataLayout(NULL),
@@ -1088,7 +1092,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic, boo
             m_isa == Target::NEON32)
             options.FloatABIType = llvm::FloatABI::Hard;
 #endif
-        if (g->opt.disableFMA == false)
+        if (gm->opt.disableFMA == false)
             options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         if (g->NoOmitFramePointer)
@@ -1170,7 +1174,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic, boo
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
             this->m_tf_attributes = new llvm::AttributeSet(
                 llvm::AttributeSet::get(
-                    *g->ctx,
+                    *m->ctx,
                     llvm::AttributeSet::FunctionIndex,
                     attrBuilder));
 #else // LLVM 5.0+
@@ -1427,7 +1431,7 @@ Target::SizeOf(llvm::Type *type,
                                             arrayRef, "sizeof_gep",
                                             insertAtEnd);
 #endif
-        if (m_is32Bit || g->opt.force32BitAddressing)
+        if (m_is32Bit || gm->opt.force32BitAddressing)
             return new llvm::PtrToIntInst(gep, LLVMTypes::Int32Type,
                                           "sizeof_int", insertAtEnd);
         else
@@ -1436,7 +1440,7 @@ Target::SizeOf(llvm::Type *type,
     }
 
     uint64_t byteSize = getDataLayout()->getTypeStoreSize(type);
-    if (m_is32Bit || g->opt.force32BitAddressing)
+    if (m_is32Bit || gm->opt.force32BitAddressing)
         return LLVMInt32((int32_t)byteSize);
     else
         return LLVMInt64(byteSize);
@@ -1462,7 +1466,7 @@ Target::StructOffset(llvm::Type *type, int element,
                                             arrayRef, "offset_gep",
                                             insertAtEnd);
 #endif
-        if (m_is32Bit || g->opt.force32BitAddressing)
+        if (m_is32Bit || gm->opt.force32BitAddressing)
             return new llvm::PtrToIntInst(gep, LLVMTypes::Int32Type,
                                           "offset_int", insertAtEnd);
         else
@@ -1481,7 +1485,7 @@ Target::StructOffset(llvm::Type *type, int element,
     Assert(sl != NULL);
 
     uint64_t offset = sl->getElementOffset(element);
-    if (m_is32Bit || g->opt.force32BitAddressing)
+    if (m_is32Bit || gm->opt.force32BitAddressing)
         return LLVMInt32((int32_t)offset);
     else
         return LLVMInt64(offset);
@@ -1501,9 +1505,9 @@ void Target::markFuncWithTargetAttr(llvm::Function* func) {
 
 
 ///////////////////////////////////////////////////////////////////////////
-// Opt
+// OptimizationOptions
 
-Opt::Opt() {
+OptimizationOptions::OptimizationOptions() {
     level = 1;
     fastMath = false;
     fastMaskedVload = false;
@@ -1525,13 +1529,9 @@ Opt::Opt() {
 }
 
 ///////////////////////////////////////////////////////////////////////////
-// Globals
+// GlobalOptions
 
-Globals::Globals() {
-    mathLib = Globals::Math_ISPC;
-
-    includeStdlib = true;
-    runCPP = true;
+GlobalOptions::GlobalOptions() {
     debugPrint = false;
     printTarget = false;
     NoOmitFramePointer = false;
@@ -1551,8 +1551,6 @@ Globals::Globals() {
     fuzzTestSeed = -1;
     mangleFunctionsWithTarget = false;
 
-    ctx = new llvm::LLVMContext;
-
 #ifdef ISPC_IS_WINDOWS
     _getcwd(currentDirectory, sizeof(currentDirectory));
 #else
@@ -1562,6 +1560,18 @@ Globals::Globals() {
     forceAlignment = -1;
     dllExport = false;
 }
+
+
+///////////////////////////////////////////////////////////////////////////
+// ModuleOptions
+
+ModuleOptions::ModuleOptions() {
+  mathLib = ModuleOptions::Math_ISPC;
+  includeStdlib = true;
+  runCPP = true;
+  forceAlignment = -1;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////
 // SourcePos
@@ -1630,3 +1640,5 @@ Union(const SourcePos &p1, const SourcePos &p2) {
     ret.last_column = std::max(p1.last_column, p2.last_column);
     return ret;
 }
+
+_ISPC_END

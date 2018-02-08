@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -40,11 +40,15 @@
 
 #include "ispc.h"
 
+_ISPC_BEGIN
+
 /** Optimize the functions in the given module, applying the specified
     level of optimization.  optLevel zero corresponds to essentially no
     optimization--just enough to generate correct code, while level one
     corresponds to full optimization.
 */
 void Optimize(llvm::Module *module, int optLevel);
+
+_ISPC_END
 
 #endif // ISPC_OPT_H

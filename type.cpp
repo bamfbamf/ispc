@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2015, Intel Corporation
+  Copyright (c) 2010-2015, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -63,6 +63,7 @@
   #include <llvm/Support/Dwarf.h>
 #endif
 
+_ISPC_BEGIN
 
 /** Utility routine used in code that prints out declarations; returns true
     if the given name should be printed, false otherwise.  This allows us
@@ -649,22 +650,22 @@ llvm::DIType *AtomicType::GetDIType(llvm::DIScope *scope) const {
     }
     else if (variability == Variability::Varying) {
 #if ISPC_LLVM_VERSION == ISPC_LLVM_3_2
-        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth()-1);
+        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, m->target->getVectorWidth()-1);
 #elif ISPC_LLVM_VERSION > ISPC_VERSION_3_2 && ISPC_LLVM_VERSION <= ISPC_LLVM_3_5
-        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
+        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, m->target->getVectorWidth());
 #else // LLVM 3.6+
-        llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
+        llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, m->target->getVectorWidth());
 #endif
 #if ISPC_LLVM_VERSION > ISPC_VERSION_3_2 && ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         llvm::DIArray subArray = m->diBuilder->getOrCreateArray(sub);
         llvm::DIType unifType = GetAsUniformType()->GetDIType(scope);
-        uint64_t size =  unifType.getSizeInBits()  * g->target->getVectorWidth();
-        uint64_t align = unifType.getAlignInBits() * g->target->getVectorWidth();
+        uint64_t size =  unifType.getSizeInBits()  * m->target->getVectorWidth();
+        uint64_t align = unifType.getAlignInBits() * m->target->getVectorWidth();
 #else // LLVM 3.7+
         llvm::DINodeArray subArray = m->diBuilder->getOrCreateArray(sub);
         llvm::DIType *unifType = GetAsUniformType()->GetDIType(scope);
-        uint64_t size =  unifType->getSizeInBits() * g->target->getVectorWidth();
-        uint64_t align = unifType->getAlignInBits()* g->target->getVectorWidth();
+        uint64_t size =  unifType->getSizeInBits() * m->target->getVectorWidth();
+        uint64_t align = unifType->getAlignInBits()* m->target->getVectorWidth();
 #endif
         return m->diBuilder->createVectorType(size, align, unifType, subArray);
     }
@@ -867,7 +868,7 @@ EnumType::GetCDeclaration(const std::string &varName) const {
     if (variability == Variability::SOA ||
         variability == Variability::Varying) {
         int vWidth = (variability == Variability::Varying) ?
-            g->target->getVectorWidth() :
+            m->target->getVectorWidth() :
             variability.soaWidth;
         char buf[32];
         sprintf(buf, "[%d]", vWidth);
@@ -947,21 +948,21 @@ llvm::DIType *EnumType::GetDIType(llvm::DIScope *scope) const {
         return diType;
     case Variability::Varying: {
 #if ISPC_LLVM_VERSION == ISPC_LLVM_3_2
-        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth()-1);
+        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, m->target->getVectorWidth()-1);
 #elif ISPC_LLVM_VERSION <= ISPC_LLVM_3_5
-        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
+        llvm::Value *sub = m->diBuilder->getOrCreateSubrange(0, m->target->getVectorWidth());
 #else // LLVM 3.6++
-        llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, g->target->getVectorWidth());
+        llvm::Metadata *sub = m->diBuilder->getOrCreateSubrange(0, m->target->getVectorWidth());
 #endif
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         llvm::DIArray subArray = m->diBuilder->getOrCreateArray(sub);
-        uint64_t size  =  diType.getSizeInBits() * g->target->getVectorWidth();
-        uint64_t align = diType.getAlignInBits() * g->target->getVectorWidth();
+        uint64_t size  =  diType.getSizeInBits() * m->target->getVectorWidth();
+        uint64_t align = diType.getAlignInBits() * m->target->getVectorWidth();
 #elif ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
         llvm::DINodeArray subArray = m->diBuilder->getOrCreateArray(sub);
         //llvm::DebugNodeArray subArray = m->diBuilder->getOrCreateArray(sub);
-        uint64_t size =  diType->getSizeInBits() * g->target->getVectorWidth();
-        uint64_t align = diType->getAlignInBits()* g->target->getVectorWidth();
+        uint64_t size =  diType->getSizeInBits() * m->target->getVectorWidth();
+        uint64_t align = diType->getAlignInBits()* m->target->getVectorWidth();
 #endif
         return m->diBuilder->createVectorType(size, align, diType, subArray);
     }
@@ -1237,7 +1238,7 @@ PointerType::GetCDeclaration(const std::string &name) const {
         ret += buf;
     }
     if (baseIsBasicVarying) {
-      int vWidth = g->target->getVectorWidth();
+      int vWidth = m->target->getVectorWidth();
       char buf[32];
       sprintf(buf, "[%d]", vWidth);
       ret += buf;
@@ -1276,7 +1277,7 @@ PointerType::LLVMType(llvm::LLVMContext *ctx) const {
 
         llvm::ArrayRef<llvm::Type *> typesArrayRef =
             llvm::ArrayRef<llvm::Type *>(types, 2);
-        return llvm::StructType::get(*g->ctx, typesArrayRef);
+        return llvm::StructType::get(*ctx, typesArrayRef);
     }
 
     switch (variability.type) {
@@ -1323,7 +1324,7 @@ llvm::DIType *PointerType::GetDIType(llvm::DIScope *scope) const {
     }
     llvm::DIType *diTargetType = baseType->GetDIType(scope);
 #endif
-    int bitsSize = g->target->is32Bit() ? 32 : 64;
+    int bitsSize = m->target->is32Bit() ? 32 : 64;
     int ptrAlignBits = bitsSize;
     switch (variability.type) {
     case Variability::Uniform:
@@ -1337,7 +1338,7 @@ llvm::DIType *PointerType::GetDIType(llvm::DIScope *scope) const {
         llvm::DIDerivedType *eltType =
 #endif
             m->diBuilder->createPointerType(diTargetType, bitsSize, ptrAlignBits);
-        return lCreateDIArray(eltType, g->target->getVectorWidth());
+        return lCreateDIArray(eltType, m->target->getVectorWidth());
     }
     case Variability::SOA: {
         ArrayType at(GetAsUniformType(), variability.soaWidth);
@@ -1581,7 +1582,7 @@ ArrayType::GetCDeclaration(const std::string &name) const {
     }
 
     int soaWidth = base->GetSOAWidth();
-    int vWidth = (base->IsVaryingType()) ? g->target->getVectorWidth() : 0;
+    int vWidth = (base->IsVaryingType()) ? m->target->getVectorWidth() : 0;
     base = base->GetAsUniformType();
 
     std::string s = base->GetCDeclaration(name);
@@ -1911,7 +1912,7 @@ llvm::DIType *VectorType::GetDIType(llvm::DIScope *scope) const {
 #endif
 
     if (IsUniformType())
-        align = 4 * g->target->getNativeVectorWidth();
+        align = 4 * m->target->getNativeVectorWidth();
 
     if (IsUniformType() || IsVaryingType())
         return m->diBuilder->createVectorType(sizeBits, align, eltType, subArray);
@@ -1935,7 +1936,7 @@ VectorType::getVectorMemoryCount() const {
     if (base->IsVaryingType())
         return numElements;
     else if (base->IsUniformType()) {
-        int nativeWidth = g->target->getNativeVectorWidth();
+        int nativeWidth = m->target->getNativeVectorWidth();
         if (Type::Equal(base->GetAsUniformType(), AtomicType::UniformInt64) ||
             Type::Equal(base->GetAsUniformType(), AtomicType::UniformUInt64) ||
             Type::Equal(base->GetAsUniformType(), AtomicType::UniformDouble))
@@ -1981,7 +1982,7 @@ lMangleStructName(const std::string &name, Variability variability) {
     std::string n;
 
     // Encode vector width
-    sprintf(buf, "v%d", g->target->getVectorWidth());
+    sprintf(buf, "v%d", m->target->getVectorWidth());
     n += buf;
 
     // Variability
@@ -2058,14 +2059,14 @@ StructType::StructType(const std::string &n, const llvm::SmallVector<const Type 
                     return;
                 }
                 else
-                    elementTypes.push_back(type->LLVMType(g->ctx));
+                    elementTypes.push_back(type->LLVMType(m->ctx));
             }
         }
 
         if (lStructTypeMap.find(mname) == lStructTypeMap.end()) {
             // New struct definition
             llvm::StructType *st =
-                llvm::StructType::create(*g->ctx, elementTypes, mname);
+                llvm::StructType::create(*m->ctx, elementTypes, mname);
             lStructTypeMap[mname] = st;
         }
         else {
@@ -2411,7 +2412,7 @@ llvm::DIType *StructType::GetDIType(llvm::DIScope *scope) const {
 #else // LLVM 4.0+
 
 llvm::DIType *StructType::GetDIType(llvm::DIScope *scope) const {
-    llvm::Type *llvm_type = LLVMType(g->ctx);
+    llvm::Type *llvm_type = LLVMType(m->ctx);
     auto& dataLayout = m->module->getDataLayout();
     auto layout = dataLayout.getStructLayout(llvm::dyn_cast_or_null<llvm::StructType>(llvm_type));
     std::vector<llvm::Metadata *> elementLLVMTypes;
@@ -2422,7 +2423,7 @@ llvm::DIType *StructType::GetDIType(llvm::DIScope *scope) const {
         llvm::DIType *eltType = GetElementType(i)->GetDIType(scope);
         uint64_t eltSize = eltType->getSizeInBits();
 
-        auto llvmType = GetElementType(i)->LLVMType(g->ctx);
+        auto llvmType = GetElementType(i)->LLVMType(m->ctx);
         uint64_t eltAlign = dataLayout.getABITypeAlignment(llvmType) * 8;
         Assert(eltAlign != 0);
 
@@ -2538,7 +2539,7 @@ UndefinedStructType::UndefinedStructType(const std::string &n,
         // Create a new opaque LLVM struct type for this struct name
         std::string mname = lMangleStructName(name, variability);
         if (lStructTypeMap.find(mname) == lStructTypeMap.end())
-            lStructTypeMap[mname] = llvm::StructType::create(*g->ctx, mname);
+            lStructTypeMap[mname] = llvm::StructType::create(*m->ctx, mname);
     }
 }
 
@@ -3344,7 +3345,7 @@ FunctionType::LLVMFunctionType(llvm::LLVMContext *ctx, bool removeMask) const {
     std::vector<llvm::Type *> callTypes;
     if (isTask 
 #ifdef ISPC_NVPTX_ENABLED
-      && (g->target->getISA() != Target::NVPTX)
+      && (m->target->getISA() != Target::NVPTX)
 #endif 
       ){
         // Tasks take three arguments: a pointer to a struct that holds the
@@ -3374,7 +3375,7 @@ FunctionType::LLVMFunctionType(llvm::LLVMContext *ctx, bool removeMask) const {
         return NULL;
     }
 
-    llvm::Type *llvmReturnType = returnType->LLVMType(g->ctx);
+    llvm::Type *llvmReturnType = returnType->LLVMType(ctx);
     if (llvmReturnType == NULL)
         return NULL;
 
@@ -3741,3 +3742,5 @@ bool
 Type::EqualIgnoringConst(const Type *a, const Type *b) {
     return lCheckTypeEquality(a, b, true);
 }
+
+_ISPC_END

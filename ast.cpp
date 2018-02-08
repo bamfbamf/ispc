@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2011-2015, Intel Corporation
+  Copyright (c) 2011-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 #include "stmt.h"
 #include "sym.h"
 #include "util.h"
+
+_ISPC_BEGIN
 
 ///////////////////////////////////////////////////////////////////////////
 // ASTNode
@@ -508,3 +510,5 @@ SafeToRunWithMaskAllOff(ASTNode *root) {
     WalkAST(root, lCheckAllOffSafety, NULL, &safe);
     return safe;
 }
+
+_ISPC_END

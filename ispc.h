@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2018, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -32,7 +32,7 @@
 */
 
 /** @file ispc.h
-    @brief Main ispc.header file. Defines Target, Globals and Opt classes.
+    @brief Main ispc.header file. Defines Target and GlobalOptions classes.
 */
 
 #ifndef ISPC_H
@@ -62,6 +62,37 @@
 #include <set>
 #include <string>
 
+// Forward declarations of a number of widely-used LLVM types
+namespace llvm {
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
+class AttributeSet;
+#else // LLVM 5.0+
+class AttrBuilder;
+#endif
+class BasicBlock;
+class Constant;
+class ConstantValue;
+class DataLayout;
+class DIBuilder;
+class Function;
+class FunctionType;
+class LLVMContext;
+class Module;
+class Target;
+class TargetMachine;
+class Type;
+class Value;
+class DIFile;
+class DIType;
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
+class DIDescriptor;
+#else // LLVM 3.7+
+class DIScope;
+#endif
+}
+
+_ISPC_BEGIN
+
 /** @def ISPC_MAX_NVEC maximum vector size of any of the compliation
     targets.
  */
@@ -69,36 +100,6 @@
 
 // Number of final optimization phase
 #define LAST_OPT_NUMBER 1000
-
-// Forward declarations of a number of widely-used LLVM types
-namespace llvm {
-#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
-    class AttributeSet;
-#else // LLVM 5.0+
-    class AttrBuilder;
-#endif
-    class BasicBlock;
-    class Constant;
-    class ConstantValue;
-    class DataLayout;
-    class DIBuilder;
-    class Function;
-    class FunctionType;
-    class LLVMContext;
-    class Module;
-    class Target;
-    class TargetMachine;
-    class Type;
-    class Value;
-    class DIFile;
-    class DIType;
-#if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
-    class DIDescriptor;
-#else // LLVM 3.7+
-    class DIScope;
-#endif
-}
-
 
 class ArrayType;
 class AST;
@@ -209,7 +210,8 @@ public:
     /** Initializes the given Target pointer for a target of the given
         name, if the name is a known target.  Returns true if the
         target was initialized and false if the name is unknown. */
-    Target(const char *arch, const char *cpu, const char *isa, bool pic, bool printTarget, std::string genenricAsSmth = "");
+    Target(const char *arch, const char *cpu, const char *isa, bool pic,
+           bool printTarget, std::string genenricAsSmth = "");
 
     /** Returns a comma-delimited string giving the names of the currently
         supported compilation targets. */
@@ -428,8 +430,8 @@ private:
     This structure collects all of the options related to optimization of
     generated code.
 */
-struct Opt {
-    Opt();
+struct OptimizationOptions {
+    OptimizationOptions();
 
     /** Optimization level.  Currently, the only valid values are 0,
         indicating essentially no optimization, and 1, indicating as much
@@ -532,6 +534,7 @@ struct Opt {
     bool disableCoalescing;
 };
 
+
 /** @brief This structure collects together a number of global variables.
 
     This structure collects a number of global variables that mostly
@@ -540,26 +543,8 @@ struct Opt {
     values are all set during command-line argument processing or very
     early during the compiler's execution, before any files are parsed.
   */
-struct Globals {
-    Globals();
-
-    /** Optimization option settings */
-    Opt opt;
-    /** Compilation target information */
-    Target* target;
-
-    /** There are a number of math libraries that can be used for
-        transcendentals and the like during program compilation. */
-    enum MathLib { Math_ISPC, Math_ISPCFast, Math_SVML, Math_System };
-    MathLib mathLib;
-
-    /** Records whether the ispc standard library should be made available
-        to the program during compilations. (Default is true.) */
-    bool includeStdlib;
-
-    /** Indicates whether the C pre-processor should be run over the
-        program source before compiling it.  (Default is true.) */
-    bool runCPP;
+struct GlobalOptions {
+    GlobalOptions();
 
     /** When \c true, voluminous debugging output will be printed during
         ispc's execution. */
@@ -634,9 +619,6 @@ struct Globals {
     /** Seed for random number generator used for fuzz testing. */
     int fuzzTestSeed;
 
-    /** Global LLVMContext object */
-    llvm::LLVMContext *ctx;
-
     /** Current working directory when the ispc compiler starts
         execution. */
     char currentDirectory[1024];
@@ -656,6 +638,48 @@ struct Globals {
     /** When true, flag non-static functions with dllexport attribute on Windows. */
     bool dllExport;
 };
+
+
+/** @brief Structure that collects per module options.
+*/
+struct ModuleOptions {
+  ModuleOptions();
+
+  /** Optimization option settings */
+  OptimizationOptions opt;
+
+  /** There are a number of math libraries that can be used for
+  transcendentals and the like during program compilation. */
+  enum MathLib { Math_ISPC, Math_ISPCFast, Math_SVML, Math_System };
+  MathLib mathLib;
+
+  /** Records whether the ispc standard library should be made available
+  to the program during compilations. (Default is true.) */
+  bool includeStdlib;
+
+  /** Indicates whether the C pre-processor should be run over the
+  program source before compiling it.  (Default is true.) */
+  bool runCPP;
+
+  /** Indicates which phases of optimization we want to switch off. */
+  std::set<int> off_stages;
+
+  /** Arguments to pass along to the C pre-processor, if it is run on the
+  program before compilation. */
+  std::vector<std::string> cppArgs;
+
+  /** Additional user-provided directories to search when processing
+  #include directives in the preprocessor. */
+  std::vector<std::string> includePath;
+
+  /** Indicates that alignment in memory allocation routines should be
+  forced to have given value. -1 value means natural alignment for the platforms. */
+  int forceAlignment;
+
+  /** When true, flag non-static functions with dllexport attribute on Windows. */
+  bool dllExport;
+};
+
 
 enum {
     COST_ASSIGN = 1,
@@ -689,7 +713,11 @@ enum {
     PREDICATE_SAFE_IF_STATEMENT_COST = 6,
 };
 
-extern Globals *g;
+
+extern GlobalOptions *g;
+extern ModuleOptions *gm;
 extern Module *m;
+
+_ISPC_END
 
 #endif // ISPC_H

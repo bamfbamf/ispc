@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2015, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -82,6 +82,79 @@ extern int yyparse();
 struct yy_buffer_state;
 extern yy_buffer_state *yy_scan_string(const char *);
 
+extern char stdlib_mask1_code[];
+extern char stdlib_mask8_code[];
+extern char stdlib_mask16_code[];
+extern char stdlib_mask32_code[];
+extern char stdlib_mask64_code[];
+
+#define EXPORT_MODULE_DECL(export_module) \
+    extern unsigned char export_module[]; \
+    extern int export_module##_length;
+
+EXPORT_MODULE_DECL(builtins_bitcode_c_32)
+EXPORT_MODULE_DECL(builtins_bitcode_c_64)
+#ifdef ISPC_NVPTX_ENABLED
+EXPORT_MODULE_DECL(builtins_bitcode_nvptx_64bit)
+#endif
+#ifdef ISPC_ARM_ENABLED
+EXPORT_MODULE_DECL(builtins_bitcode_neon_8_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_neon_8_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_neon_16_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_neon_16_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_neon_32_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_neon_32_64bit)
+#endif
+EXPORT_MODULE_DECL(builtins_bitcode_sse2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse2_x2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse2_x2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_16_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_x2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_16_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_x2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_8_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_8_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_sse4_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx1_i64x4_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx1_i64x4_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx1_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx1_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx1_x2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx1_x2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx11_i64x4_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx11_i64x4_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx11_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx11_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx11_x2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx11_x2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx2_i64x4_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx2_i64x4_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx2_x2_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_avx2_x2_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_knl_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_knl_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_skx_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_skx_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_4_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_4_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_8_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_8_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_16_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_16_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_32_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_32_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_64_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_64_64bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_1_32bit)
+EXPORT_MODULE_DECL(builtins_bitcode_generic_1_64bit)
+
+_ISPC_BEGIN
 
 /** Given an LLVM type, try to find the equivalent ispc type.  Note that
     this is an under-constrained problem due to LLVM's type representations
@@ -215,7 +288,7 @@ lCreateISPCSymbol(llvm::Function *func, SymbolTable *symbolTable) {
     // symbol creation code below assumes that any LLVM vector of i32s is a
     // varying int32.  Here, we need that to be interpreted as a varying
     // bool, so just have a one-off override for that one...
-    if (g->target->getMaskBitCount() != 1 && name == "__sext_varying_bool") {
+    if (m->target->getMaskBitCount() != 1 && name == "__sext_varying_bool") {
         const Type *returnType = AtomicType::VaryingInt32;
         llvm::SmallVector<const Type *, 8> argTypes;
         argTypes.push_back(AtomicType::VaryingBool);
@@ -319,7 +392,7 @@ lCheckModuleIntrinsics(llvm::Module *module) {
             if (id == 0) fprintf(stderr, "FATAL: intrinsic is not found: %s  \n", funcName.c_str());
             Assert(id != 0);
             llvm::Type *intrinsicType =
-                llvm::Intrinsic::getType(*g->ctx, id);
+                llvm::Intrinsic::getType(*m->ctx, id);
             intrinsicType = llvm::PointerType::get(intrinsicType, 0);
             Assert(func->getType() == intrinsicType);
         }
@@ -779,7 +852,7 @@ lSetInternalFunctions(llvm::Module *module) {
         llvm::Function *f = module->getFunction(names[i]);
         if (f != NULL && f->empty() == false) {
             f->setLinkage(llvm::GlobalValue::InternalLinkage);
-            g->target->markFuncWithTargetAttr(f);
+            m->target->markFuncWithTargetAttr(f);
         }
     }
 }
@@ -805,26 +878,26 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
 #endif
 
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_4_0 // LLVM 4.0+
-    llvm::Expected<std::unique_ptr<llvm::Module>> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *g->ctx);
+    llvm::Expected<std::unique_ptr<llvm::Module>> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *m->ctx);
     if (!ModuleOrErr) {
         Error(SourcePos(), "Error parsing stdlib bitcode: %s", toString(ModuleOrErr.takeError()).c_str());
     } else {
         llvm::Module *bcModule = ModuleOrErr.get().release();
 #elif ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
-    llvm::ErrorOr<std::unique_ptr<llvm::Module>> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *g->ctx);
+    llvm::ErrorOr<std::unique_ptr<llvm::Module>> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *m->ctx);
     if (std::error_code EC = ModuleOrErr.getError())
         Error(SourcePos(), "Error parsing stdlib bitcode: %s", EC.message().c_str());
     else {
         llvm::Module *bcModule = ModuleOrErr.get().release();
 #elif ISPC_LLVM_VERSION == ISPC_LLVM_3_5 || ISPC_LLVM_VERSION == ISPC_LLVM_3_6
-    llvm::ErrorOr<llvm::Module *> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *g->ctx);
+    llvm::ErrorOr<llvm::Module *> ModuleOrErr = llvm::parseBitcodeFile(bcBuf, *m->ctx);
     if (std::error_code EC = ModuleOrErr.getError())
         Error(SourcePos(), "Error parsing stdlib bitcode: %s", EC.message().c_str());
     else {
         llvm::Module *bcModule = ModuleOrErr.get();
 #else // LLVM 3.2 - 3.4
     std::string bcErr;
-    llvm::Module *bcModule = llvm::ParseBitcodeFile(bcBuf, *g->ctx, &bcErr);
+    llvm::Module *bcModule = llvm::ParseBitcodeFile(bcBuf, *m->ctx, &bcErr);
     if (!bcModule)
         Error(SourcePos(), "Error parsing stdlib bitcode: %s", bcErr.c_str());
     else {
@@ -857,12 +930,12 @@ AddBitcodeToModule(const unsigned char *bitcode, int length,
         // the values for an ARM target.  This maybe won't cause problems
         // in the generated code, since bulitins.c doesn't do anything too
         // complex w.r.t. struct layouts, etc.
-        if (g->target->getISA() != Target::NEON32 &&
-            g->target->getISA() != Target::NEON16 &&
-            g->target->getISA() != Target::NEON8)
+        if (m->target->getISA() != Target::NEON32 &&
+            m->target->getISA() != Target::NEON16 &&
+            m->target->getISA() != Target::NEON8)
 #endif // !__arm__
 #ifdef ISPC_NVPTX_ENABLED
-        if (g->target->getISA() != Target::NVPTX)
+        if (m->target->getISA() != Target::NVPTX)
 #endif /* ISPC_NVPTX_ENABLED */
         {
             Assert(bcTriple.getArch() == llvm::Triple::UnknownArch ||
@@ -1054,8 +1127,8 @@ lDefineConstantIntFunc(const char *name, int val, llvm::Module *module,
 #else // LLVM 3.3+
     func->addFnAttr(llvm::Attribute::AlwaysInline);
 #endif
-    llvm::BasicBlock *bblock = llvm::BasicBlock::Create(*g->ctx, "entry", func, 0);
-    llvm::ReturnInst::Create(*g->ctx, LLVMInt32(val), bblock);
+    llvm::BasicBlock *bblock = llvm::BasicBlock::Create(*m->ctx, "entry", func, 0);
+    llvm::ReturnInst::Create(*m->ctx, LLVMInt32(val), bblock);
 
     sym->function = func;
     symbolTable->AddVariable(sym);
@@ -1070,7 +1143,7 @@ lDefineProgramIndex(llvm::Module *module, SymbolTable *symbolTable, std::vector<
                    AtomicType::VaryingInt32->GetAsConstType(), SC_STATIC);
 
     int pi[ISPC_MAX_NVEC];
-    for (int i = 0; i < g->target->getVectorWidth(); ++i)
+    for (int i = 0; i < m->target->getVectorWidth(); ++i)
         pi[i] = i;
     sym->constValue = new ConstExpr(sym->type, pi, SourcePos());
 
@@ -1173,6 +1246,7 @@ static void emitLLVMUsed(llvm::Module& module, std::vector<llvm::Constant*> &lis
 }
 #endif
 
+
 void
 DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *module,
              bool includeStdlibISPC) {
@@ -1180,18 +1254,14 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     // They will be referenced in llvm.used intrinsic to prevent they removal from
     // the object file.
     std::vector<llvm::Constant*> debug_symbols;
-    bool runtime32 = g->target->is32Bit();
-    bool warn = g->target->getISA() != Target::GENERIC;
+    bool runtime32 = m->target->is32Bit();
+    bool warn = m->target->getISA() != Target::GENERIC;
 
 #define EXPORT_MODULE_COND_WARN(export_module, warnings)        \
-    extern unsigned char export_module[];                       \
-    extern int export_module##_length;                          \
     AddBitcodeToModule(export_module, export_module##_length,   \
                        module, symbolTable, warnings);
 
 #define EXPORT_MODULE(export_module)                            \
-    extern unsigned char export_module[];                       \
-    extern int export_module##_length;                          \
     AddBitcodeToModule(export_module, export_module##_length,   \
                        module, symbolTable, true);
 
@@ -1209,7 +1279,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
 
     // Next, add the target's custom implementations of the various needed
     // builtin functions (e.g. __masked_store_32(), etc).
-    switch (g->target->getISA()) {
+    switch (m->target->getISA()) {
 #ifdef ISPC_NVPTX_ENABLED
     case Target::NVPTX:
       {
@@ -1254,7 +1324,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     }
 #endif
     case Target::SSE2: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 4:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_sse2_32bit);
@@ -1277,7 +1347,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         break;
     }
     case Target::SSE4: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 4:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_sse4_32bit);
@@ -1288,26 +1358,26 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
             break;
         case 8:
             if (runtime32) {
-                if (g->target->getMaskBitCount() == 16) {
+                if (m->target->getMaskBitCount() == 16) {
                     EXPORT_MODULE(builtins_bitcode_sse4_16_32bit);
                 }
                 else {
-                    Assert(g->target->getMaskBitCount() == 32);
+                    Assert(m->target->getMaskBitCount() == 32);
                     EXPORT_MODULE(builtins_bitcode_sse4_x2_32bit);
                 }
             }
             else {
-                if (g->target->getMaskBitCount() == 16) {
+                if (m->target->getMaskBitCount() == 16) {
                     EXPORT_MODULE(builtins_bitcode_sse4_16_64bit);
                 }
                 else {
-                    Assert(g->target->getMaskBitCount() == 32);
+                    Assert(m->target->getMaskBitCount() == 32);
                     EXPORT_MODULE(builtins_bitcode_sse4_x2_64bit);
                 }
             }
             break;
         case 16:
-            Assert(g->target->getMaskBitCount() == 8);
+            Assert(m->target->getMaskBitCount() == 8);
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_sse4_8_32bit);
             }
@@ -1321,9 +1391,9 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         break;
     }
     case Target::AVX: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 4:
-            if (g->target->getDataTypeWidth() == 32) {
+            if (m->target->getDataTypeWidth() == 32) {
                 // Note here that for avx1-i32x4 we are using bitcode file for
                 // sse4-i32x4. This is intentional and good enough.
                 // AVX target implies appropriate target-feature attrbute,
@@ -1339,7 +1409,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
                 else {
                     EXPORT_MODULE(builtins_bitcode_sse4_64bit);
                 }
-            } else if (g->target->getDataTypeWidth() == 64) {
+            } else if (m->target->getDataTypeWidth() == 64) {
                 if (runtime32) {
                     EXPORT_MODULE(builtins_bitcode_avx1_i64x4_32bit);
                 }
@@ -1372,7 +1442,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         break;
     }
     case Target::AVX11: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 4:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_avx11_i64x4_32bit);
@@ -1403,7 +1473,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         break;
     }
     case Target::AVX2: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 4:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_avx2_i64x4_32bit);
@@ -1435,7 +1505,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     }
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
     case Target::KNL_AVX512: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 16:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_knl_32bit);
@@ -1452,7 +1522,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
 #endif
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_8 // LLVM 3.8+
     case Target::SKX_AVX512: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 16:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_skx_32bit);
@@ -1468,7 +1538,7 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
     }
 #endif
     case Target::GENERIC: {
-        switch (g->target->getVectorWidth()) {
+        switch (m->target->getVectorWidth()) {
         case 4:
             if (runtime32) {
                 EXPORT_MODULE(builtins_bitcode_generic_4_32bit);
@@ -1528,14 +1598,14 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
 
     // define the 'programCount' builtin variable
 #ifdef ISPC_NVPTX_ENABLED
-    if (g->target->getISA() == Target::NVPTX)
+    if (m->target->getISA() == Target::NVPTX)
     {
       lDefineConstantInt("programCount", 32, module, symbolTable, debug_symbols);
     }
     else
     {
 #endif /* ISPC_NVPTX_ENABLED */
-      lDefineConstantInt("programCount", g->target->getVectorWidth(), module, symbolTable, debug_symbols);
+      lDefineConstantInt("programCount", m->target->getVectorWidth(), module, symbolTable, debug_symbols);
 #ifdef ISPC_NVPTX_ENABLED
     }
 #endif /* ISPC_NVPTX_ENABLED */
@@ -1545,33 +1615,33 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
 
     // Define __math_lib stuff.  This is used by stdlib.ispc, for example, to
     // figure out which math routines to end up calling...
-    lDefineConstantInt("__math_lib", (int)g->mathLib, module, symbolTable, debug_symbols);
-    lDefineConstantInt("__math_lib_ispc", (int)Globals::Math_ISPC, module,
+    lDefineConstantInt("__math_lib", (int)gm->mathLib, module, symbolTable, debug_symbols);
+    lDefineConstantInt("__math_lib_ispc", (int)ModuleOptions::Math_ISPC, module,
                        symbolTable, debug_symbols);
-    lDefineConstantInt("__math_lib_ispc_fast", (int)Globals::Math_ISPCFast,
+    lDefineConstantInt("__math_lib_ispc_fast", (int)ModuleOptions::Math_ISPCFast,
                        module, symbolTable, debug_symbols);
-    lDefineConstantInt("__math_lib_svml", (int)Globals::Math_SVML, module,
+    lDefineConstantInt("__math_lib_svml", (int)ModuleOptions::Math_SVML, module,
                        symbolTable, debug_symbols);
-    lDefineConstantInt("__math_lib_system", (int)Globals::Math_System, module,
+    lDefineConstantInt("__math_lib_system", (int)ModuleOptions::Math_System, module,
                        symbolTable, debug_symbols);
-    lDefineConstantIntFunc("__fast_masked_vload", (int)g->opt.fastMaskedVload,
+    lDefineConstantIntFunc("__fast_masked_vload", (int)gm->opt.fastMaskedVload,
                            module, symbolTable, debug_symbols);
 
-    lDefineConstantInt("__have_native_half", g->target->hasHalf(), module,
+    lDefineConstantInt("__have_native_half", m->target->hasHalf(), module,
                        symbolTable, debug_symbols);
-    lDefineConstantInt("__have_native_rand", g->target->hasRand(), module,
+    lDefineConstantInt("__have_native_rand", m->target->hasRand(), module,
                        symbolTable, debug_symbols);
-    lDefineConstantInt("__have_native_transcendentals", g->target->hasTranscendentals(),
+    lDefineConstantInt("__have_native_transcendentals", m->target->hasTranscendentals(),
                        module, symbolTable, debug_symbols);
-    lDefineConstantInt("__have_native_trigonometry", g->target->hasTrigonometry(),
+    lDefineConstantInt("__have_native_trigonometry", m->target->hasTrigonometry(),
                        module, symbolTable, debug_symbols);
-    lDefineConstantInt("__have_native_rsqrtd", g->target->hasRsqrtd(),
+    lDefineConstantInt("__have_native_rsqrtd", m->target->hasRsqrtd(),
                        module, symbolTable, debug_symbols);
-    lDefineConstantInt("__have_native_rcpd", g->target->hasRcpd(),
+    lDefineConstantInt("__have_native_rcpd", m->target->hasRcpd(),
                        module, symbolTable, debug_symbols);
 
 #ifdef ISPC_NVPTX_ENABLED
-    lDefineConstantInt("__is_nvptx_target", (int)(g->target->getISA() == Target::NVPTX),
+    lDefineConstantInt("__is_nvptx_target", (int)(m->target->getISA() == Target::NVPTX),
                        module, symbolTable, debug_symbols);
 #else
     lDefineConstantInt("__is_nvptx_target", (int)0, module, symbolTable, debug_symbols);
@@ -1593,14 +1663,12 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         // If the user wants the standard library to be included, parse the
         // serialized version of the stdlib.ispc file to get its
         // definitions added.
-        extern char stdlib_mask1_code[], stdlib_mask8_code[];
-        extern char stdlib_mask16_code[], stdlib_mask32_code[], stdlib_mask64_code[];
-        if (g->target->getISA() == Target::GENERIC &&
-            g->target->getVectorWidth() == 1) { // 1 wide uses 32 stdlib
+        if (m->target->getISA() == Target::GENERIC &&
+            m->target->getVectorWidth() == 1) { // 1 wide uses 32 stdlib
             yy_scan_string(stdlib_mask32_code);
         }
         else {
-            switch (g->target->getMaskBitCount()) {
+            switch (m->target->getMaskBitCount()) {
             case 1:
                 yy_scan_string(stdlib_mask1_code);
                 break;
@@ -1623,3 +1691,5 @@ DefineStdlib(SymbolTable *symbolTable, llvm::LLVMContext *ctx, llvm::Module *mod
         yyparse();
     }
 }
+
+_ISPC_END

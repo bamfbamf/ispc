@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2015, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -51,17 +51,18 @@
   #include <llvm/IR/Constants.h>
 #endif
 
+namespace llvm {
+class PHINode;
+class InsertElementInst;
+}
+
+_ISPC_BEGIN
+
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_9
 #define PTYPE(p) (llvm::cast<llvm::SequentialType>((p)->getType()->getScalarType())->getElementType())
 #else // LLVM 4.0+
 #define PTYPE(p) (llvm::cast<llvm::PointerType>((p)->getType()->getScalarType())->getElementType())
 #endif
-
-namespace llvm {
-    class PHINode;
-    class InsertElementInst;
-}
-
 
 /** This structure holds pointers to a variety of LLVM types; code
     elsewhere can use them from here, ratherthan needing to make more
@@ -189,42 +190,42 @@ extern llvm::Constant *LLVMIntAsType(int64_t, llvm::Type *t);
 extern llvm::Constant *LLVMUIntAsType(uint64_t, llvm::Type *t);
 
 /** Returns an LLVM boolean vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMBoolVector(const bool *v);
 
 /** Returns an LLVM i8 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMInt8Vector(const int8_t *i);
 /** Returns an LLVM i8 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMUInt8Vector(const uint8_t *i);
 
 /** Returns an LLVM i16 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMInt16Vector(const int16_t *i);
 /** Returns an LLVM i16 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMUInt16Vector(const uint16_t *i);
 
 /** Returns an LLVM i32 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMInt32Vector(const int32_t *i);
 /** Returns an LLVM i32 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMUInt32Vector(const uint32_t *i);
 
 /** Returns an LLVM i64 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMInt64Vector(const int64_t *i);
 /** Returns an LLVM i64 vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMUInt64Vector(const uint64_t *i);
 
 /** Returns an LLVM float vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMFloatVector(const float *f);
 /** Returns an LLVM double vector based on the given array of values.
-    The array should have g->target.vectorWidth elements. */
+    The array should have m->target.vectorWidth elements. */
 extern llvm::Constant *LLVMDoubleVector(const double *f);
 
 /** LLVM constant value representing an 'all on' SIMD lane mask */
@@ -319,5 +320,7 @@ extern llvm::Value *LLVMShuffleVectors(llvm::Value *v1, llvm::Value *v2,
 */
 extern const char *LLVMGetName(llvm::Value *v, const char *);
 extern const char *LLVMGetName(const char *op, llvm::Value *v1, llvm::Value *v2);
+
+_ISPC_END
 
 #endif // ISPC_LLVMUTIL_H

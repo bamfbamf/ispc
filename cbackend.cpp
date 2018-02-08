@@ -132,6 +132,9 @@
 #undef setjmp
 #define snprintf _snprintf
 #endif
+
+_ISPC_USING
+
 ///////////////////////////////////////////////////////////////////////////////
 // This part of code was in LLVM's ConstantsScanner.h,
 // but it was removed in revision #232397
@@ -1861,9 +1864,9 @@ void CWriter::printConstant(llvm::Constant *CPV, bool Static) {
         // when generating code for knl-generic in multitarget mode.
         // Short vectors are mapped to "native" vectors and cause AVX-512 code
         // generation in static block initialization (__vec16_* in ::init function).
-        bool isGenericKNL = g->target->getISA() == Target::GENERIC &&
-                                                   !g->target->getTreatGenericAsSmth().empty() &&
-                                                   g->mangleFunctionsWithTarget;
+        bool isGenericKNL = m->target->getISA() == Target::GENERIC &&
+                       !m->target->getTreatGenericAsSmth().empty() &&
+                       g->mangleFunctionsWithTarget;
         if (isGenericKNL && CPV->getOperand(0)->getType()->isVectorTy())
           llvm::report_fatal_error("knl-generic-* target doesn's support short vectors");
         Out << ' ';
@@ -2488,13 +2491,13 @@ bool CWriter::doInitialization(llvm::Module &M) {
   Out << "  #include <alloca.h>\n";
   Out << "#endif\n\n";
 
-  if (g->opt.fastMath) {
+  if (gm->opt.fastMath) {
       Out << "#define ISPC_FAST_MATH 1\n";
   } else {
       Out << "#undef ISPC_FAST_MATH\n";
   }
 
-  if (g->opt.forceAlignedMemory) {
+  if (gm->opt.forceAlignedMemory) {
       Out << "#define ISPC_FORCE_ALIGNED_MEMORY\n";
   }
 
@@ -5202,8 +5205,8 @@ SmearCleanupPass::runOnBasicBlock(llvm::BasicBlock &bb) {
 
 class AndCmpCleanupPass : public llvm::BasicBlockPass {
 public:
-    AndCmpCleanupPass()
-        : BasicBlockPass(ID) { }
+    AndCmpCleanupPass(llvm::Module *m)
+        : BasicBlockPass(ID) { module = m; }
 
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_9 // <= 3.9
     const char *getPassName() const { return "AndCmp Cleanup Pass"; }
@@ -5211,6 +5214,8 @@ public:
     llvm::StringRef getPassName() const { return "AndCmp Cleanup Pass"; }
 #endif
     bool runOnBasicBlock(llvm::BasicBlock &BB);
+
+    llvm::Module *module;
 
     static char ID;
 };
@@ -5262,7 +5267,7 @@ AndCmpCleanupPass::runOnBasicBlock(llvm::BasicBlock &bb) {
             funcName += lTypeToSuffix(opCmp->getOperand(0)->getType());
             funcName += "_and_mask";
 
-            llvm::Function *andCmpFunc = m->module->getFunction(funcName);
+            llvm::Function *andCmpFunc = module->getFunction(funcName);
             if (andCmpFunc == NULL) {
                 // Declare the function if needed; the first two arguments
                 // are the same as the two arguments to the compare we're
@@ -5270,13 +5275,13 @@ AndCmpCleanupPass::runOnBasicBlock(llvm::BasicBlock &bb) {
                 llvm::Type *cmpOpType = opCmp->getOperand(0)->getType();
                 llvm::Constant *acf =
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
-                    m->module->getOrInsertFunction(funcName, LLVMTypes::MaskType,
-                                                   cmpOpType, cmpOpType,
-                                                   LLVMTypes::MaskType, NULL);
+                    module->getOrInsertFunction(funcName, LLVMTypes::MaskType,
+                                                cmpOpType, cmpOpType,
+                                                LLVMTypes::MaskType, NULL);
 #else // LLVM 5.0+
-                    m->module->getOrInsertFunction(funcName, LLVMTypes::MaskType,
-                                                   cmpOpType, cmpOpType,
-                                                   LLVMTypes::MaskType);
+                    module->getOrInsertFunction(funcName, LLVMTypes::MaskType,
+                                                cmpOpType, cmpOpType,
+                                                LLVMTypes::MaskType);
 #endif
                 andCmpFunc = llvm::dyn_cast<llvm::Function>(acf);
                 Assert(andCmpFunc != NULL);
@@ -5540,7 +5545,7 @@ WriteCXXFile(llvm::Module *module, const char *fn, int vectorWidth,
     pm.add(llvm::createLowerInvokePass());
     pm.add(llvm::createCFGSimplificationPass());   // clean up after lower invoke.
     pm.add(new SmearCleanupPass(module, vectorWidth));
-    pm.add(new AndCmpCleanupPass());
+    pm.add(new AndCmpCleanupPass(module));
     pm.add(new MaskOpsCleanupPass(module));
     pm.add(llvm::createDeadCodeEliminationPass()); // clean up after smear pass
 //CO    pm.add(llvm::createPrintModulePass(&fos));

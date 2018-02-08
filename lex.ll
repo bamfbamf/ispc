@@ -42,6 +42,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+_ISPC_USING
+
 static uint64_t lParseBinary(const char *ptr, SourcePos pos, char **endPtr);
 static int lParseInteger(bool dotdotdot);
 static void lCComment(SourcePos *);
@@ -49,7 +51,9 @@ static void lCppComment(SourcePos *);
 static void lHandleCppHash(SourcePos *);
 static void lStringConst(YYSTYPE *, SourcePos *);
 static double lParseHexFloat(const char *ptr);
+_ISPC_BEGIN
 extern void RegisterDependency(const std::string &fileName);
+_ISPC_END
 
 #define YY_USER_ACTION \
     yylloc.first_line = yylloc.last_line; \
@@ -308,6 +312,8 @@ inline int ispcRand() {
     return lrand48();
 #endif
 }
+
+_ISPC_USING
 
 #define RT \
     if (g->enableFuzzTest) { \
@@ -637,14 +643,14 @@ lParseInteger(bool dotdotdot) {
             // No u or l suffix
             // If we're compiling to an 8-bit mask target and the constant
             // fits into 8 bits, return an 8-bit int.
-            if (g->target->getDataTypeWidth() == 8) {
+            if (m->target->getDataTypeWidth() == 8) {
                 if (yylval.intVal <= 0x7fULL)
                     return TOKEN_INT8_CONSTANT;
                 else if (yylval.intVal <= 0xffULL)
                     return TOKEN_UINT8_CONSTANT;
             }
             // And similarly for 16-bit masks and constants
-            if (g->target->getDataTypeWidth() == 16) {
+            if (m->target->getDataTypeWidth() == 16) {
                 if (yylval.intVal <= 0x7fffULL)
                     return TOKEN_INT16_CONSTANT;
                 else if (yylval.intVal <= 0xffffULL)

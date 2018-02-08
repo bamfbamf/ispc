@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2014, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -79,6 +79,8 @@
 #else
   #include <llvm/Support/InstIterator.h>
 #endif
+
+_ISPC_BEGIN
 
 /////////////////////////////////////////////////////////////////////////////////////
 // Expr
@@ -164,7 +166,7 @@ lArrayToPointer(Expr *expr) {
     Expr *zero = new ConstExpr(AtomicType::UniformInt32, 0, expr->pos);
     Expr *index = new IndexExpr(expr, zero, expr->pos);
     Expr *addr = new AddressOfExpr(index, expr->pos);
-    addr = TypeCheck(addr);
+    addr = _ISPC_NS::TypeCheck(addr);
     Assert(addr != NULL);
     addr = Optimize(addr);
     Assert(addr != NULL);
@@ -660,7 +662,7 @@ InitSymbol(llvm::Value *ptr, const Type *symType, Expr *initExpr,
         // instead we'll make a constant static global that holds the
         // constant value and emit a memcpy to put its value into the
         // pointer we have.
-        llvm::Type *llvmType = symType->LLVMType(g->ctx);
+        llvm::Type *llvmType = symType->LLVMType(m->ctx);
         if (llvmType == NULL) {
             AssertPos(pos, m->errorCount > 0);
             return;
@@ -673,7 +675,7 @@ InitSymbol(llvm::Value *ptr, const Type *symType, Expr *initExpr,
                 new llvm::GlobalVariable(*m->module, llvmType, true /* const */,
                                          llvm::GlobalValue::InternalLinkage,
                                          constValue, "const_initializer");
-            llvm::Value *size = g->target->SizeOf(llvmType,
+            llvm::Value *size = m->target->SizeOf(llvmType,
                                                  ctx->GetCurrentBasicBlock());
             ctx->MemcpyInst(ptr, constPtr, size);
         }
@@ -793,7 +795,7 @@ InitSymbol(llvm::Value *ptr, const Type *symType, Expr *initExpr,
                 else {
                     // If we don't have enough initializer values, initialize the
                     // rest as zero.
-                    llvm::Type *llvmType = elementType->LLVMType(g->ctx);
+                    llvm::Type *llvmType = elementType->LLVMType(m->ctx);
                     if (llvmType == NULL) {
                         AssertPos(pos, m->errorCount > 0);
                         return;
@@ -984,8 +986,8 @@ lStoreAssignResult(llvm::Value *value, llvm::Value *ptr, const Type *valueType,
                    Symbol *baseSym) {
     Assert(baseSym == NULL ||
            baseSym->varyingCFDepth <= ctx->VaryingCFDepth());
-    if (!g->opt.disableMaskedStoreToStore &&
-        !g->opt.disableMaskAllOnOptimizations &&
+    if (!gm->opt.disableMaskedStoreToStore &&
+        !gm->opt.disableMaskAllOnOptimizations &&
         baseSym != NULL &&
         baseSym->varyingCFDepth == ctx->VaryingCFDepth() &&
         baseSym->storageClass != SC_STATIC &&
@@ -1059,11 +1061,11 @@ lEmitPrePostIncDec(UnaryExpr::Op op, Expr *expr, SourcePos pos,
     if (CastType<PointerType>(type) != NULL) {
         const Type *incType = type->IsUniformType() ? AtomicType::UniformInt32 :
             AtomicType::VaryingInt32;
-        llvm::Constant *dval = lLLVMConstantValue(incType, g->ctx, delta);
+        llvm::Constant *dval = lLLVMConstantValue(incType, m->ctx, delta);
         binop = ctx->GetElementPtrInst(rvalue, dval, type, opName.c_str());
     }
     else {
-        llvm::Constant *dval = lLLVMConstantValue(type, g->ctx, delta);
+        llvm::Constant *dval = lLLVMConstantValue(type, m->ctx, delta);
         if (type->IsFloatType())
             binop = ctx->BinaryOperator(llvm::Instruction::FAdd, rvalue,
                                         dval, opName.c_str());
@@ -1094,7 +1096,7 @@ lEmitNegate(Expr *arg, SourcePos pos, FunctionEmitContext *ctx) {
         return NULL;
 
     // Negate by subtracting from zero...
-    llvm::Value *zero = lLLVMConstantValue(type, g->ctx, 0.);
+    llvm::Value *zero = lLLVMConstantValue(type, m->ctx, 0.);
     ctx->SetDebugPos(pos);
     if (type->IsFloatType())
         return ctx->BinaryOperator(llvm::Instruction::FSub, zero, argVal,
@@ -1504,14 +1506,14 @@ lEmitBinaryPointerArith(BinaryExpr::Op op, llvm::Value *value0,
             // Now divide by the size of the type that the pointer
             // points to in order to return the difference in elements.
             llvm::Type *llvmElementType =
-                ptrType->GetBaseType()->LLVMType(g->ctx);
-            llvm::Value *size = g->target->SizeOf(llvmElementType,
+                ptrType->GetBaseType()->LLVMType(m->ctx);
+            llvm::Value *size = m->target->SizeOf(llvmElementType,
                                                  ctx->GetCurrentBasicBlock());
             if (ptrType->IsVaryingType())
                 size = ctx->SmearUniform(size);
 
-            if (g->target->is32Bit() == false &&
-                g->opt.force32BitAddressing == true) {
+            if (m->target->is32Bit() == false &&
+                gm->opt.force32BitAddressing == true) {
                 // If we're doing 32-bit addressing math on a 64-bit
                 // target, then trunc the delta down to a 32-bit value.
                 // (Thus also matching what will be a 32-bit value
@@ -1530,7 +1532,7 @@ lEmitBinaryPointerArith(BinaryExpr::Op op, llvm::Value *value0,
         }
         else {
             // ptr - integer
-            llvm::Value *zero = lLLVMConstantValue(type1, g->ctx, 0.);
+            llvm::Value *zero = lLLVMConstantValue(type1, m->ctx, 0.);
             llvm::Value *negOffset =
                 ctx->BinaryOperator(llvm::Instruction::Sub, zero, value1,
                                     "negate");
@@ -1784,7 +1786,7 @@ lEmitLogicalOp(BinaryExpr::Op op, Expr *arg0, Expr *arg1,
 
     // Allocate temporary storage for the return value
     const Type *retType = Type::MoreGeneralType(type0, type1, pos, lOpString(op));
-    llvm::Type *llvmRetType = retType->LLVMType(g->ctx);
+    llvm::Type *llvmRetType = retType->LLVMType(m->ctx);
     llvm::Value *retPtr = ctx->AllocaInst(llvmRetType, "logical_op_mem");
 
     llvm::BasicBlock *bbSkipEvalValue1 = ctx->CreateBasicBlock("skip_eval_1");
@@ -2094,8 +2096,8 @@ BinaryExpr::GetType() const {
         else if (op == Sub) {
             if (CastType<PointerType>(type1) != NULL) {
                 // ptr - ptr -> ~ptrdiff_t
-                const Type *diffType = (g->target->is32Bit() ||
-                                        g->opt.force32BitAddressing) ?
+                const Type *diffType = (m->target->is32Bit() ||
+                                        gm->opt.force32BitAddressing) ?
                     AtomicType::UniformInt32 : AtomicType::UniformInt64;
                 if (type0->IsVaryingType() || type1->IsVaryingType())
                     diffType = diffType->GetAsVaryingType();
@@ -2359,7 +2361,7 @@ BinaryExpr::Optimize() {
     ConstExpr *constArg0 = llvm::dyn_cast<ConstExpr>(arg0);
     ConstExpr *constArg1 = llvm::dyn_cast<ConstExpr>(arg1);
 
-    if (g->opt.fastMath) {
+    if (gm->opt.fastMath) {
         // optimizations related to division by floats..
 
         // transform x / const -> x * (1/const)
@@ -2373,10 +2375,10 @@ BinaryExpr::Optimize() {
                     inv[i] = 1.f / inv[i];
                 Expr *einv = new ConstExpr(type1, inv, constArg1->pos);
                 Expr *e = new BinaryExpr(Mul, arg0, einv, pos);
-                e = ::TypeCheck(e);
+                e = _ISPC_NS::TypeCheck(e);
                 if (e == NULL)
                     return NULL;
-                return ::Optimize(e);
+                return _ISPC_NS::Optimize(e);
             }
         }
 
@@ -2393,18 +2395,18 @@ BinaryExpr::Optimize() {
                     ExprList *args = new ExprList(arg1, arg1->pos);
                     Expr *rcpCall = new FunctionCallExpr(rcpSymExpr, args,
                                                          arg1->pos);
-                    rcpCall = ::TypeCheck(rcpCall);
+                    rcpCall = _ISPC_NS::TypeCheck(rcpCall);
                     if (rcpCall == NULL)
                         return NULL;
-                    rcpCall = ::Optimize(rcpCall);
+                    rcpCall = _ISPC_NS::Optimize(rcpCall);
                     if (rcpCall == NULL)
                         return NULL;
 
                     Expr *ret = new BinaryExpr(Mul, arg0, rcpCall, pos);
-                    ret = ::TypeCheck(ret);
+                    ret = _ISPC_NS::TypeCheck(ret);
                     if (ret == NULL)
                         return NULL;
-                    return ::Optimize(ret);
+                    return _ISPC_NS::Optimize(ret);
                 }
                 else
                     Warning(pos, "rcp() not found from stdlib.  Can't apply "
@@ -2430,13 +2432,13 @@ BinaryExpr::Optimize() {
         args->exprs.push_back(new ConstExpr(AtomicType::UniformInt32, divisor, arg1->pos));
         Expr *idivCall = new FunctionCallExpr(idivSymExpr, args, pos);
 
-        idivCall = ::TypeCheck(idivCall);
+        idivCall = _ISPC_NS::TypeCheck(idivCall);
         if (idivCall == NULL)
           return NULL;
 
         Assert(Type::EqualIgnoringConst(GetType(), idivCall->GetType()));
         idivCall = new TypeCastExpr(GetType(), idivCall, pos);
-        return ::Optimize(idivCall);
+        return _ISPC_NS::Optimize(idivCall);
     }
 
     // From here on out, we're just doing constant folding, so if both args
@@ -2613,7 +2615,7 @@ BinaryExpr::TypeCheck() {
             return NULL;
         }
 
-        const Type *offsetType = g->target->is32Bit() ?
+        const Type *offsetType = m->target->is32Bit() ?
             AtomicType::UniformInt32 : AtomicType::UniformInt64;
         if (pt0->IsVaryingType())
             offsetType = offsetType->GetAsVaryingType();
@@ -3090,7 +3092,7 @@ AssignExpr::TypeCheck() {
                 return NULL;
             }
 
-            const Type *deltaType = g->target->is32Bit() ? AtomicType::UniformInt32 :
+            const Type *deltaType = m->target->is32Bit() ? AtomicType::UniformInt32 :
                 AtomicType::UniformInt64;
             if (lhsType->IsVaryingType())
                 deltaType = deltaType->GetAsVaryingType();
@@ -3189,7 +3191,7 @@ lEmitVaryingSelect(FunctionEmitContext *ctx, llvm::Value *test,
     ctx->StoreInst(expr2, resultPtr);
     // Use masking to conditionally store the expr1 values
     Assert(resultPtr->getType() ==
-           PointerType::GetUniform(type)->LLVMType(g->ctx));
+           PointerType::GetUniform(type)->LLVMType(m->ctx));
     ctx->StoreInst(expr1, resultPtr, test, type, PointerType::GetUniform(type));
     return ctx->LoadInst(resultPtr, "selectexpr_final");
 }
@@ -3280,10 +3282,10 @@ SelectExpr::GetValue(FunctionEmitContext *ctx) const {
         // for expressions that are both computationally simple and safe to
         // run with an "all off" mask.
         bool shortCircuit1 =
-            (::EstimateCost(expr1) > PREDICATE_SAFE_IF_STATEMENT_COST ||
+            (_ISPC_NS::EstimateCost(expr1) > PREDICATE_SAFE_IF_STATEMENT_COST ||
              SafeToRunWithMaskAllOff(expr1) == false);
         bool shortCircuit2 =
-            (::EstimateCost(expr2) > PREDICATE_SAFE_IF_STATEMENT_COST ||
+            (_ISPC_NS::EstimateCost(expr2) > PREDICATE_SAFE_IF_STATEMENT_COST ||
              SafeToRunWithMaskAllOff(expr2) == false);
 
         Debug(expr1->pos, "%sshort circuiting evaluation for select expr",
@@ -3295,7 +3297,7 @@ SelectExpr::GetValue(FunctionEmitContext *ctx) const {
         // expression, if any.  (These stay as uninitialized memory if we
         // short circuit around the corresponding expression.)
         llvm::Type *exprType =
-            expr1->GetType()->LLVMType(g->ctx);
+            expr1->GetType()->LLVMType(m->ctx);
         llvm::Value *expr1Ptr = ctx->AllocaInst(exprType);
         llvm::Value *expr2Ptr = ctx->AllocaInst(exprType);
 
@@ -3341,7 +3343,7 @@ SelectExpr::GetValue(FunctionEmitContext *ctx) const {
                 vt->GetElementCount()));
 
         // Do an element-wise select
-        llvm::Value *result = llvm::UndefValue::get(type->LLVMType(g->ctx));
+        llvm::Value *result = llvm::UndefValue::get(type->LLVMType(m->ctx));
         for (int i = 0; i < vt->GetElementCount(); ++i) {
             llvm::Value *ti = ctx->ExtractInst(testVal, i);
             llvm::Value *e1i = ctx->ExtractInst(expr1Val, i);
@@ -3791,7 +3793,7 @@ FunctionCallExpr::TypeCheck() {
                                   &argIsConstant) == false)
             return NULL;
 
-        func = ::TypeCheck(fse);
+        func = _ISPC_NS::TypeCheck(fse);
         if (func == NULL)
             return NULL;
 
@@ -4021,7 +4023,7 @@ ExprList::GetConstant(const Type *type) const {
                 return NULL;
             }
             // Re-establish const-ness if possible
-            expr = ::Optimize(expr);
+            expr = _ISPC_NS::Optimize(expr);
         }
 
         llvm::Constant *c = expr->GetConstant(elementType);
@@ -4040,7 +4042,7 @@ ExprList::GetConstant(const Type *type) const {
             return NULL;
         }
 
-        llvm::Type *llvmType = elementType->LLVMType(g->ctx);
+        llvm::Type *llvmType = elementType->LLVMType(m->ctx);
         if (llvmType == NULL) {
             AssertPos(pos, m->errorCount > 0);
             return NULL;
@@ -4052,12 +4054,12 @@ ExprList::GetConstant(const Type *type) const {
 
     if (CastType<StructType>(type) != NULL) {
         llvm::StructType *llvmStructType =
-            llvm::dyn_cast<llvm::StructType>(collectionType->LLVMType(g->ctx));
+            llvm::dyn_cast<llvm::StructType>(collectionType->LLVMType(m->ctx));
         AssertPos(pos, llvmStructType != NULL);
         return llvm::ConstantStruct::get(llvmStructType, cv);
     }
     else {
-        llvm::Type *lt = type->LLVMType(g->ctx);
+        llvm::Type *lt = type->LLVMType(m->ctx);
         llvm::ArrayType *lat =
             llvm::dyn_cast<llvm::ArrayType>(lt);
         if (lat != NULL)
@@ -4074,7 +4076,7 @@ ExprList::GetConstant(const Type *type) const {
             // Uniform short vectors are stored as vectors of length
             // rounded up to the native vector width.  So we add additional
             // undef values here until we get the right size.
-            int vectorWidth = g->target->getNativeVectorWidth();
+            int vectorWidth = m->target->getNativeVectorWidth();
             const VectorType *vt = CastType<VectorType>(type);
             const AtomicType *bt = vt->GetElementType();
 
@@ -4272,7 +4274,7 @@ IndexExpr::GetValue(FunctionEmitContext *ctx) const {
             return NULL;
         }
         ctx->SetDebugPos(pos);
-        llvm::Value *tmpPtr = ctx->AllocaInst(baseExprType->LLVMType(g->ctx),
+        llvm::Value *tmpPtr = ctx->AllocaInst(baseExprType->LLVMType(m->ctx),
                                               "array_tmp");
         ctx->StoreInst(val, tmpPtr);
 
@@ -4367,7 +4369,7 @@ static llvm::Value *
 lConvertToSlicePointer(FunctionEmitContext *ctx, llvm::Value *ptr,
                        const PointerType *slicePtrType) {
     llvm::Type *llvmSlicePtrType =
-        slicePtrType->LLVMType(g->ctx);
+        slicePtrType->LLVMType(m->ctx);
     llvm::StructType *sliceStructType =
         llvm::dyn_cast<llvm::StructType>(llvmSlicePtrType);
     Assert(sliceStructType != NULL &&
@@ -4612,7 +4614,7 @@ IndexExpr::TypeCheck() {
     }
 
     bool isUniform = (index->GetType()->IsUniformType() &&
-                      !g->opt.disableUniformMemoryOptimizations);
+                      !gm->opt.disableUniformMemoryOptimizations);
 
     if (!isUniform) {
         // Unless we have an explicit 64-bit index and are compiling to a
@@ -4623,7 +4625,7 @@ IndexExpr::TypeCheck() {
                                        AtomicType::UniformUInt64) ||
               Type::EqualIgnoringConst(indexType->GetAsUniformType(),
                                        AtomicType::UniformInt64)) ||
-              g->target->is32Bit() || g->opt.force32BitAddressing) {
+              m->target->is32Bit() || gm->opt.force32BitAddressing) {
             const Type *indexType = AtomicType::VaryingInt32;
             index = TypeConvertExpr(index, indexType, "array index");
             if (index == NULL)
@@ -4639,8 +4641,8 @@ IndexExpr::TypeCheck() {
         //
         //   However, the index can be still truncated to signed int32 if
         //   the index type is 64 bit and --addressing=32.
-        bool force_32bit = g->target->is32Bit() ||
-            (g->opt.force32BitAddressing &&
+        bool force_32bit = m->target->is32Bit() ||
+            (gm->opt.force32BitAddressing &&
              Type::EqualIgnoringConst(indexType->GetAsUniformType(),
                                       AtomicType::UniformInt64));
         const Type *indexType = force_32bit ?
@@ -5056,7 +5058,7 @@ VectorMemberExpr::GetValue(FunctionEmitContext *ctx) const {
         }
 
         // Allocate temporary memory to tore the result
-        llvm::Value *resultPtr = ctx->AllocaInst(memberType->LLVMType(g->ctx),
+        llvm::Value *resultPtr = ctx->AllocaInst(memberType->LLVMType(m->ctx),
                                                  "vector_tmp");
 
         // FIXME: we should be able to use the internal mask here according
@@ -5110,7 +5112,7 @@ MemberExpr::create(Expr *e, const char *id, SourcePos p, SourcePos idpos,
     // e->GetType() in the following.  But really we just shouldn't try to
     // resolve this now but just have a generic MemberExpr type that
     // handles all cases so that this is unnecessary.
-    e = ::TypeCheck(e);
+    e = _ISPC_NS::TypeCheck(e);
 
     const Type *exprType;
     if (e == NULL || (exprType = e->GetType()) == NULL)
@@ -5207,7 +5209,7 @@ MemberExpr::GetValue(FunctionEmitContext *ctx) const {
         }
         ctx->SetDebugPos(pos);
         const Type *exprType = expr->GetType();
-        llvm::Value *ptr = ctx->AllocaInst(exprType->LLVMType(g->ctx),
+        llvm::Value *ptr = ctx->AllocaInst(exprType->LLVMType(m->ctx),
                                            "struct_tmp");
         ctx->StoreInst(val, ptr);
 
@@ -5783,7 +5785,7 @@ lConvert(const From *from, To *to, int count, bool forceVarying) {
         lConvertElement(from[i], &to[i]);
 
     if (forceVarying && count == 1)
-        for (int i = 1; i < g->target->getVectorWidth(); ++i)
+        for (int i = 1; i < m->target->getVectorWidth(); ++i)
             to[i] = to[0];
 }
 
@@ -6021,7 +6023,7 @@ ConstExpr::GetValues(uint32_t *up, bool forceVarying) const {
 
 int
 ConstExpr::Count() const {
-    return GetType()->IsVaryingType() ? g->target->getVectorWidth() : 1;
+    return GetType()->IsVaryingType() ? m->target->getVectorWidth() : 1;
 }
 
 
@@ -6137,7 +6139,7 @@ ConstExpr::GetConstant(const Type *type) const {
         // The only time we should get here is if we have an integer '0'
         // constant that should be turned into a NULL pointer of the
         // appropriate type.
-        llvm::Type *llvmType = type->LLVMType(g->ctx);
+        llvm::Type *llvmType = type->LLVMType(m->ctx);
         if (llvmType == NULL) {
             AssertPos(pos, m->errorCount > 0);
             return NULL;
@@ -6265,6 +6267,8 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
     }
     const char *cOpName = opName.c_str();
 
+    Target *target = m->target;
+
     switch (toType->basicType) {
     case AtomicType::TYPE_FLOAT: {
         llvm::Type *targetType =
@@ -6292,7 +6296,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
         case AtomicType::TYPE_UINT16:
         case AtomicType::TYPE_UINT32:
         case AtomicType::TYPE_UINT64:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from unsigned int to float is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::UIToFP, // unsigned int to float
@@ -6408,14 +6412,14 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = ctx->TruncInst(exprVal, targetType, cOpName);
             break;
         case AtomicType::TYPE_FLOAT:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from float to unsigned int is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // unsigned int
                                  exprVal, targetType, cOpName);
             break;
         case AtomicType::TYPE_DOUBLE:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from double to unsigned int is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // unsigned int
@@ -6488,7 +6492,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = exprVal;
             break;
         case AtomicType::TYPE_FLOAT:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from float to unsigned int is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // unsigned int
@@ -6501,7 +6505,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = ctx->TruncInst(exprVal, targetType, cOpName);
             break;
         case AtomicType::TYPE_DOUBLE:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from double to unsigned int is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // unsigned int
@@ -6576,7 +6580,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = exprVal;
             break;
         case AtomicType::TYPE_FLOAT:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from float to unsigned int is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // unsigned int
@@ -6587,7 +6591,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = ctx->TruncInst(exprVal, targetType, cOpName);
             break;
         case AtomicType::TYPE_DOUBLE:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from double to unsigned int is slow. "
                                    "Use \"int\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // unsigned int
@@ -6658,7 +6662,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = ctx->ZExtInst(exprVal, targetType, cOpName);
             break;
         case AtomicType::TYPE_FLOAT:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from float to unsigned int64 is slow. "
                                    "Use \"int64\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // signed int
@@ -6669,7 +6673,7 @@ lTypeConvAtomic(FunctionEmitContext *ctx, llvm::Value *exprVal,
             cast = exprVal;
             break;
         case AtomicType::TYPE_DOUBLE:
-            if (fromType->IsVaryingType() && g->target->getISA() != Target::GENERIC)
+            if (fromType->IsVaryingType() && target->getISA() != Target::GENERIC)
                 PerformanceWarning(pos, "Conversion from double to unsigned int64 is slow. "
                                    "Use \"int64\" if possible");
             cast = ctx->CastInst(llvm::Instruction::FPToUI, // signed int
@@ -6781,7 +6785,7 @@ lUniformValueToVarying(FunctionEmitContext *ctx, llvm::Value *value,
     const CollectionType *collectionType = CastType<CollectionType>(type);
     if (collectionType != NULL) {
         llvm::Type *llvmType =
-            type->GetAsVaryingType()->LLVMType(g->ctx);
+            type->GetAsVaryingType()->LLVMType(m->ctx);
         llvm::Value *retValue = llvm::UndefValue::get(llvmType);
 
         const StructType *structType = CastType<StructType>(type->GetAsVaryingType());
@@ -6854,13 +6858,13 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
                 // need to do is the slice conversion and don't need to
                 // also do unif->varying conversions.  But this is really
                 // ugly logic.
-                if (value->getType() == toType->LLVMType(g->ctx))
+                if (value->getType() == toType->LLVMType(m->ctx))
                     return value;
             }
 
             if (fromType->IsUniformType() && toType->IsUniformType())
                 // bitcast to the actual pointer type
-                return ctx->BitCastInst(value, toType->LLVMType(g->ctx));
+                return ctx->BitCastInst(value, toType->LLVMType(m->ctx));
             else if (fromType->IsVaryingType() && toType->IsVaryingType()) {
                 // both are vectors of ints already, nothing to do at the IR
                 // level
@@ -6893,7 +6897,7 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
             if (toType->IsBoolType()) {
                 // convert pointer to bool
                 llvm::Type *lfu =
-                    fromType->GetAsUniformType()->LLVMType(g->ctx);
+                    fromType->GetAsUniformType()->LLVMType(m->ctx);
                 llvm::PointerType *llvmFromUnifType =
                     llvm::dyn_cast<llvm::PointerType>(lfu);
 
@@ -6924,7 +6928,7 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
                 if (toType->IsVaryingType() && fromType->IsUniformType())
                     value = ctx->SmearUniform(value);
 
-                llvm::Type *llvmToType = toType->LLVMType(g->ctx);
+                llvm::Type *llvmToType = toType->LLVMType(m->ctx);
                 if (llvmToType == NULL)
                     return NULL;
                 return ctx->PtrToIntInst(value, llvmToType, "ptr_typecast");
@@ -6945,9 +6949,9 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
                    Type::EqualIgnoringConst(arrayAsPtr->GetType()->GetAsVaryingType(),
                                             toPointerType) == true);
             arrayAsPtr = new TypeCastExpr(toPointerType, arrayAsPtr, pos);
-            arrayAsPtr = ::TypeCheck(arrayAsPtr);
+            arrayAsPtr = _ISPC_NS::TypeCheck(arrayAsPtr);
             AssertPos(pos, arrayAsPtr != NULL);
-            arrayAsPtr = ::Optimize(arrayAsPtr);
+            arrayAsPtr = _ISPC_NS::Optimize(arrayAsPtr);
             AssertPos(pos, arrayAsPtr != NULL);
         }
         AssertPos(pos, Type::EqualIgnoringConst(arrayAsPtr->GetType(), toPointerType));
@@ -6967,7 +6971,7 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
         AssertPos(pos, Type::EqualIgnoringConst(toArrayType->GetBaseType(),
                                         fromArrayType->GetBaseType()));
         llvm::Value *v = expr->GetValue(ctx);
-        llvm::Type *ptype = toType->LLVMType(g->ctx);
+        llvm::Type *ptype = toType->LLVMType(m->ctx);
         return ctx->BitCastInst(v, ptype); //, "array_cast_0size");
     }
 
@@ -6989,13 +6993,13 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
             AssertPos(pos, Type::EqualIgnoringConst(toArray->GetBaseType(),
                                             fromArray->GetBaseType()));
             llvm::Value *v = expr->GetValue(ctx);
-            llvm::Type *ptype = toType->LLVMType(g->ctx);
+            llvm::Type *ptype = toType->LLVMType(m->ctx);
             return ctx->BitCastInst(v, ptype); //, "array_cast_0size");
         }
 
         // Just bitcast it.  See Issue #721
         llvm::Value *value = expr->GetValue(ctx);
-        return ctx->BitCastInst(value, toType->LLVMType(g->ctx), "refcast");
+        return ctx->BitCastInst(value, toType->LLVMType(m->ctx), "refcast");
     }
 
     const StructType *toStruct = CastType<StructType>(toType);
@@ -7029,7 +7033,7 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
         // llvm::VectorTypes, we should just be able to issue the
         // corresponding vector type convert, which should be more
         // efficient by avoiding serialization!
-        llvm::Value *cast = llvm::UndefValue::get(toType->LLVMType(g->ctx));
+        llvm::Value *cast = llvm::UndefValue::get(toType->LLVMType(m->ctx));
         for (int i = 0; i < toVector->GetElementCount(); ++i) {
             llvm::Value *ei = ctx->ExtractInst(exprVal, i);
 
@@ -7069,14 +7073,14 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
             return NULL;
 
         llvm::Value *cast = NULL;
-        llvm::Type* toTypeLLVM = toType->LLVMType(g->ctx);
+        llvm::Type* toTypeLLVM = toType->LLVMType(m->ctx);
         if (llvm::isa<llvm::VectorType>(toTypeLLVM)) {
             // Example uniform float => uniform float<3>
             cast = ctx->BroadcastValue(conv, toTypeLLVM);
         }
         else if (llvm::isa<llvm::ArrayType>(toTypeLLVM)) {
             // Example varying float => varying float<3>
-            cast = llvm::UndefValue::get(toType->LLVMType(g->ctx));
+            cast = llvm::UndefValue::get(toType->LLVMType(m->ctx));
             for (int i = 0; i < toVector->GetElementCount(); ++i) {
                 // Here's InsertInst produces InsertValueInst.
                 cast = ctx->InsertInst(cast, conv, i);
@@ -7093,7 +7097,7 @@ TypeCastExpr::GetValue(FunctionEmitContext *ctx) const {
         if (toType->IsVaryingType() && fromType->IsUniformType())
             exprVal = ctx->SmearUniform(exprVal);
 
-        llvm::Type *llvmToType = toType->LLVMType(g->ctx);
+        llvm::Type *llvmToType = toType->LLVMType(m->ctx);
         if (llvmToType == NULL)
             return NULL;
 
@@ -7176,7 +7180,7 @@ TypeCastExpr::TypeCheck() {
     if (toType->HasUnboundVariability() && fromType->IsUniformType()) {
         TypeCastExpr *tce = new TypeCastExpr(toType->GetAsUniformType(),
                                              expr, pos);
-        return ::TypeCheck(tce);
+        return _ISPC_NS::TypeCheck(tce);
     }
     type = toType = type->ResolveUnboundVariability(Variability::Varying);
 
@@ -7221,7 +7225,7 @@ TypeCastExpr::TypeCheck() {
     if (fromPtr != NULL && toAtomic != NULL && toAtomic->IsIntType()) {
         bool safeCast = (toAtomic->basicType == AtomicType::TYPE_INT64 ||
                          toAtomic->basicType == AtomicType::TYPE_UINT64);
-        if (g->target->is32Bit())
+        if (m->target->is32Bit())
             safeCast |= (toAtomic->basicType == AtomicType::TYPE_INT32 ||
                          toAtomic->basicType == AtomicType::TYPE_UINT32);
         if (safeCast == false)
@@ -7368,7 +7372,7 @@ lConvertPointerConstant(llvm::Constant *c, const Type *constType) {
     llvm::Constant *intPtr =
         llvm::ConstantExpr::getPtrToInt(c, LLVMTypes::PointerIntType);
     Assert(constType->IsVaryingType() || constType->IsSOAType());
-    int count = constType->IsVaryingType() ? g->target->getVectorWidth() :
+    int count = constType->IsVaryingType() ? m->target->getVectorWidth() :
         constType->GetSOAWidth();
 
     std::vector<llvm::Constant *> smear;
@@ -7433,7 +7437,7 @@ ReferenceExpr::GetValue(FunctionEmitContext *ctx) const {
     const Type *type;
     llvm::Type *llvmType;
     if ((type = expr->GetType()) == NULL ||
-        (llvmType = type->LLVMType(g->ctx)) == NULL) {
+        (llvmType = type->LLVMType(m->ctx)) == NULL) {
         AssertPos(pos, m->errorCount > 0);
         return NULL;
     }
@@ -7868,17 +7872,17 @@ SizeOfExpr::GetValue(FunctionEmitContext *ctx) const {
     if (t == NULL)
         return NULL;
 
-    llvm::Type *llvmType = t->LLVMType(g->ctx);
+    llvm::Type *llvmType = t->LLVMType(m->ctx);
     if (llvmType == NULL)
         return NULL;
 
-    return g->target->SizeOf(llvmType, ctx->GetCurrentBasicBlock());
+    return m->target->SizeOf(llvmType, ctx->GetCurrentBasicBlock());
 }
 
 
 const Type *
 SizeOfExpr::GetType() const {
-    return (g->target->is32Bit() || g->opt.force32BitAddressing) ?
+    return (m->target->is32Bit() || gm->opt.force32BitAddressing) ?
         AtomicType::UniformUInt32 : AtomicType::UniformUInt64;
 }
 
@@ -7907,7 +7911,7 @@ SizeOfExpr::TypeCheck() {
     }
 #ifdef ISPC_NVPTX_ENABLED
     if (type != NULL)
-      if (g->target->getISA() == Target::NVPTX && type->IsVaryingType())
+      if (m->target->getISA() == Target::NVPTX && type->IsVaryingType())
       {
         Error(pos, "\"sizeof\" with varying data types is not yet supported with \"nvptx\" target.");
         return NULL;
@@ -8546,7 +8550,7 @@ NullPointerExpr::GetConstant(const Type *type) const {
     if (pt == NULL)
         return NULL;
 
-    llvm::Type *llvmType = type->LLVMType(g->ctx);
+    llvm::Type *llvmType = type->LLVMType(m->ctx);
     if (llvmType == NULL) {
         AssertPos(pos, m->errorCount > 0);
         return NULL;
@@ -8605,7 +8609,7 @@ NewExpr::NewExpr(int typeQual, const Type *t, Expr *init, Expr *count,
 
 llvm::Value *
 NewExpr::GetValue(FunctionEmitContext *ctx) const {
-    bool do32Bit = (g->target->is32Bit() || g->opt.force32BitAddressing);
+    bool do32Bit = (m->target->is32Bit() || gm->opt.force32BitAddressing);
 
     // Determine how many elements we need to allocate.  Note that this
     // will be a varying value if this is a varying new.
@@ -8631,7 +8635,7 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
     // Compute the total amount of memory to allocate, allocSize, as the
     // product of the number of elements to allocate and the size of a
     // single element.
-    llvm::Value *eltSize = g->target->SizeOf(allocType->LLVMType(g->ctx),
+    llvm::Value *eltSize = m->target->SizeOf(allocType->LLVMType(m->ctx),
                                             ctx->GetCurrentBasicBlock());
     if (isVarying)
         eltSize = ctx->SmearUniform(eltSize, "smear_size");
@@ -8642,9 +8646,9 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
     // varying, and taking 32-bit or 64-bit allocation counts.
     llvm::Function *func;
     if (isVarying) {
-        if (g->target->is32Bit()) {
+        if (m->target->is32Bit()) {
             func = m->module->getFunction("__new_varying32_32rt");
-        } else if (g->opt.force32BitAddressing) {
+        } else if (gm->opt.force32BitAddressing) {
             func = m->module->getFunction("__new_varying32_64rt");
         } else {
             func = m->module->getFunction("__new_varying64_64rt");
@@ -8655,7 +8659,7 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
         if (allocSize->getType() != LLVMTypes::Int64Type)
             allocSize = ctx->SExtInst(allocSize, LLVMTypes::Int64Type,
                                       "alloc_size64");
-        if (g->target->is32Bit()) {
+        if (m->target->is32Bit()) {
             func = m->module->getFunction("__new_uniform_32rt");
         } else {
             func = m->module->getFunction("__new_uniform_64rt");
@@ -8671,7 +8675,7 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
     if (retType == NULL)
         return NULL;
     if (isVarying) {
-        if (g->target->is32Bit())
+        if (m->target->is32Bit())
             // Convert i64 vector values to i32 if we are compiling to a
             // 32-bit target.
             ptrValue = ctx->TruncInst(ptrValue, LLVMTypes::VoidPointerVectorType,
@@ -8685,11 +8689,11 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
             // implemented to return NULL for program instances that aren't
             // executing; more generally, we should be using the current
             // execution mask for this...
-            for (int i = 0; i < g->target->getVectorWidth(); ++i) {
+            for (int i = 0; i < m->target->getVectorWidth(); ++i) {
                 llvm::BasicBlock *bbInit = ctx->CreateBasicBlock("init_ptr");
                 llvm::BasicBlock *bbSkip = ctx->CreateBasicBlock("skip_init");
                 llvm::Value *p = ctx->ExtractInst(ptrValue, i);
-                llvm::Value *nullValue = g->target->is32Bit() ? LLVMInt32(0) :
+                llvm::Value *nullValue = m->target->is32Bit() ? LLVMInt32(0) :
                     LLVMInt64(0);
                 // Is the pointer for the current lane non-zero?
                 llvm::Value *nonNull = ctx->CmpInst(llvm::Instruction::ICmp,
@@ -8701,7 +8705,7 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
                 // current lane.
                 ctx->SetCurrentBasicBlock(bbInit);
                 llvm::Type *ptrType =
-                    retType->GetAsUniformType()->LLVMType(g->ctx);
+                    retType->GetAsUniformType()->LLVMType(m->ctx);
                 llvm::Value *ptr = ctx->IntToPtrInst(p, ptrType);
                 InitSymbol(ptr, allocType, initExpr, ctx, pos);
                 ctx->BranchInst(bbSkip);
@@ -8716,7 +8720,7 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
         // For uniform news, we just need to cast the void * to be a
         // pointer of the return type and to run the code for initializers,
         // if present.
-        llvm::Type *ptrType = retType->LLVMType(g->ctx);
+        llvm::Type *ptrType = retType->LLVMType(m->ctx);
         ptrValue = ctx->BitCastInst(ptrValue, ptrType,
                                     LLVMGetName(ptrValue, "_cast_ptr"));
 
@@ -8746,7 +8750,7 @@ NewExpr::TypeCheck() {
         return NULL;
     }
 #ifdef ISPC_NVPTX_ENABLED
-    if (g->target->getISA() == Target::NVPTX && allocType->IsVaryingType())
+    if (m->target->getISA() == Target::NVPTX && allocType->IsVaryingType())
     {
       Error(pos, "\"new\" with varying data types is not yet supported with \"nvptx\" target.");
       return NULL;
@@ -8781,7 +8785,7 @@ NewExpr::TypeCheck() {
     }
 
     // Figure out the type that the allocation count should be
-    const Type *t = (g->target->is32Bit() || g->opt.force32BitAddressing) ?
+    const Type *t = (m->target->is32Bit() || gm->opt.force32BitAddressing) ?
         AtomicType::UniformUInt32 : AtomicType::UniformUInt64;
     if (isVarying)
         t = t->GetAsVaryingType();
@@ -8810,3 +8814,5 @@ int
 NewExpr::EstimateCost() const {
     return COST_NEW;
 }
+
+_ISPC_END

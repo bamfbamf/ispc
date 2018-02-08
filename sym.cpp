@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,8 @@
 #include "type.h"
 #include "util.h"
 #include <stdio.h>
+
+_ISPC_BEGIN
 
 ///////////////////////////////////////////////////////////////////////////
 // Symbol
@@ -88,7 +90,7 @@ SymbolTable::PushScope() {
 
 void
 SymbolTable::PopScope() {
-    Assert(variables.size() > 1);
+    Assert(variables.size() >= 1);
     freeSymbolMaps.push_back(variables.back());
     variables.pop_back();
 }
@@ -382,3 +384,5 @@ SymbolTable::RandomType() {
     }
     return iter->second;
 }
+
+_ISPC_END

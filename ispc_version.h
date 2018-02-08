@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2015-2018, Intel Corporation
+  Copyright (c) 2015-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -70,5 +70,25 @@
 #if ISPC_LLVM_VERSION < OLDEST_SUPPORTED_LLVM || ISPC_LLVM_VERSION > LATEST_SUPPORTED_LLVM
 #error "Unhandled LLVM version"
 #endif
+
+#ifdef ISPC_LLVM_ORC
+#if ISPC_LLVM_VERSION < ISPC_LLVM_3_7
+#error "Invalid LLVM version 3.7+ required"
+#endif
+
+#define ISPC_USE_NAMESPACE
+#endif // ISPC_USE_ORC_JIT
+
+#ifdef ISPC_USE_NAMESPACE
+#define _ISPC_BEGIN namespace ispc {
+#define _ISPC_END }
+#define _ISPC_NS ::ispc
+#define _ISPC_USING using namespace ::ispc;
+#else
+#define _ISPC_BEGIN
+#define _ISPC_END
+#define _ISPC_NS
+#define _ISPC_USING
+#endif // ISPC_USE_NAMESPACE
 
 #endif // ISPC_VERSION_H

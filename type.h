@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2010-2013, Intel Corporation
+  Copyright (c) 2010-2018, Intel Corporation, Next Limit
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -48,6 +48,8 @@
   #include <llvm/IR/DerivedTypes.h>
 #endif
 #include <llvm/ADT/SmallVector.h>
+
+_ISPC_BEGIN
 
 class ConstExpr;
 class StructType;
@@ -1095,5 +1097,6 @@ inline bool IsReferenceType(const Type *t) {
     return CastType<ReferenceType>(t) != NULL;
 }
 
+_ISPC_END
 
 #endif // ISPC_TYPE_H

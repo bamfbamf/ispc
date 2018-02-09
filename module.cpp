@@ -128,6 +128,7 @@
 #include <llvm/Support/ToolOutputFile.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/MemoryBuffer.h>
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_9
     #include <llvm/Bitcode/ReaderWriter.h>
 #else
@@ -407,12 +408,8 @@ BindModule(Module *module) {
 }
 
 
-Module::Module(const char *moduleID)
-    : Module(moduleID, moduleID) { }
-
-Module::Module(const char *moduleID, const char *filename) {
+Module::Module(const char *moduleID) {
     this->moduleID = moduleID;
-    this->filename = filename;
 
     if (_ISPC_NS::gm) {
         gmOwner = false;
@@ -453,7 +450,46 @@ Module::SetTarget(Target *target) {
 
 
 int
-Module::CompileFile() {
+Module::CompileFile(const char *filename) {
+  if (filename != NULL) {
+        // Try to open the file first, since otherwise we crash in the
+        // preprocessor if the file doesn't exist.
+        FILE *f = fopen(filename, "r");
+        if (!f) {
+            perror(filename);
+            return 1;
+        }
+        fclose(f);
+
+        this->filename = filename;
+        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> errorOrSrcbuf =
+            llvm::MemoryBuffer::getFile(filename);
+        Assert(!errorOrSrcbuf.getError());
+
+        return Compile(std::move(errorOrSrcbuf.get()));
+    }
+    else {
+        this->filename = "stdin";
+        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> errorOrSrcbuf =
+            llvm::MemoryBuffer::getSTDIN();
+        Assert(!errorOrSrcbuf.getError());
+
+        return Compile(std::move(errorOrSrcbuf.get()));
+    }
+}
+
+
+int
+Module::Compile(const char* src) {
+    std::unique_ptr<llvm::MemoryBuffer> srcbuf =
+        llvm::MemoryBuffer::getMemBuffer(src);
+
+    return Compile(std::move(srcbuf));
+}
+
+
+int
+Module::Compile(std::unique_ptr<llvm::MemoryBuffer> srcbuf) {
     assert(target != NULL);
 
     BindModule(this);
@@ -475,57 +511,43 @@ Module::CompileFile() {
 #endif
         diBuilder = new llvm::DIBuilder(*module);
 
-        // Let the DIBuilder know that we're starting a new compilation
-        // unit.
-        if (filename == NULL) {
-            // Unfortunately we can't yet call Error() since the global 'm'
-            // variable hasn't been initialized yet.
-            fprintf(stderr, "Can't emit debugging information with no "
-                    "source file on disk.\n");
-            ++errorCount;
-            delete diBuilder;
-            diBuilder = NULL;
-        }
-        else {
-            std::string directory, name;
-            GetDirectoryAndFileName(g->currentDirectory, filename, &directory,
-                                    &name);
-            char producerString[512];
+        std::string directory, name;
+        GetDirectoryAndFileName(g->currentDirectory, filename, &directory, &name);
+        char producerString[512];
 #if defined(BUILD_VERSION) && defined (BUILD_DATE)
-            sprintf(producerString, "ispc version %s (build %s on %s)",
-                    ISPC_VERSION, BUILD_VERSION, BUILD_DATE);
+        sprintf(producerString, "ispc version %s (build %s on %s)",
+                ISPC_VERSION, BUILD_VERSION, BUILD_DATE);
 #else
-            sprintf(producerString, "ispc version %s (built on %s)",
-                    ISPC_VERSION, __DATE__);
+        sprintf(producerString, "ispc version %s (built on %s)",
+                ISPC_VERSION, __DATE__);
 #endif
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_3
-            diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C99,  /* lang */
-                                         name,  /* filename */
-                                         directory, /* directory */
-                                         producerString, /* producer */
-                                         gm->opt.level > 0 /* is optimized */,
-                                         "-g", /* command line args */
-                                         0 /* run time version */);
+        diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C99,  /* lang */
+                                      name,  /* filename */
+                                      directory, /* directory */
+                                      producerString, /* producer */
+                                      gm->opt.level > 0 /* is optimized */,
+                                      "-g", /* command line args */
+                                      0 /* run time version */);
 #elif ISPC_LLVM_VERSION <= ISPC_LLVM_3_9 // LLVM 3.4-3.9
-            diCompileUnit =
-            diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C99,  /* lang */
-                                         name,  /* filename */
-                                         directory, /* directory */
-                                         producerString, /* producer */
-                                         gm->opt.level > 0 /* is optimized */,
-                                         "-g", /* command line args */
-                                         0 /* run time version */);
+        diCompileUnit =
+        diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C99,  /* lang */
+                                      name,  /* filename */
+                                      directory, /* directory */
+                                      producerString, /* producer */
+                                      gm->opt.level > 0 /* is optimized */,
+                                      "-g", /* command line args */
+                                      0 /* run time version */);
 #elif ISPC_LLVM_VERSION >= ISPC_LLVM_4_0 // LLVM 4.0+
-            auto srcFile = diBuilder->createFile(name, directory);
-            diCompileUnit =
-            diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C99,  /* lang */
-                                         srcFile,  /* filename */
-                                         producerString, /* producer */
-                                         gm->opt.level > 0 /* is optimized */,
-                                         "-g", /* command line args */
-                                         0 /* run time version */);
+        auto srcFile = diBuilder->createFile(name, directory);
+        diCompileUnit =
+        diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C99,  /* lang */
+                                      srcFile,  /* filename */
+                                      producerString, /* producer */
+                                      gm->opt.level > 0 /* is optimized */,
+                                      "-g", /* command line args */
+                                      0 /* run time version */);
 #endif
-        }
     }
     else
         diBuilder = NULL;
@@ -544,40 +566,19 @@ Module::CompileFile() {
     bool runPreprocessor = gm->runCPP;
 
     if (runPreprocessor) {
-        if (filename != NULL) {
-            // Try to open the file first, since otherwise we crash in the
-            // preprocessor if the file doesn't exist.
-            FILE *f = fopen(filename, "r");
-            if (!f) {
-                perror(filename);
-                return 1;
-            }
-            fclose(f);
-        }
-
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
-        execPreprocessor((filename != NULL) ? filename : "-", &os);
+
+        execPreprocessor(srcbuf.release(), &os);
+
         yy_buffer_state *strbuf = yy_scan_string(os.str().c_str());
         yyparse();
         yy_delete_buffer(strbuf);
     }
     else {
-        // No preprocessor, just open up the file if it's not stdin..
-        FILE* f = NULL;
-        if (filename == NULL)
-            f = stdin;
-        else {
-            f = fopen(filename, "r");
-            if (f == NULL) {
-                perror(filename);
-                return 1;
-            }
-        }
-        yyin = f;
-        yy_switch_to_buffer(yy_create_buffer(yyin, 4096));
+        yy_buffer_state *strbuf = yy_scan_string(srcbuf->getBufferStart());
         yyparse();
-        fclose(f);
+        yy_delete_buffer(strbuf);
     }
 
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
@@ -2532,7 +2533,8 @@ Module::writeDispatchHeader(DispatchHeaderInfo *DHI) {
 }
 
 void
-Module::execPreprocessor(const char *infilename, llvm::raw_string_ostream *ostream) const
+Module::execPreprocessor(llvm::MemoryBuffer* srcbuf,
+                         llvm::raw_string_ostream* ostream) const
 {
     clang::CompilerInstance inst;
     inst.createFileManager();
@@ -2573,9 +2575,9 @@ Module::execPreprocessor(const char *infilename, llvm::raw_string_ostream *ostre
     inst.setTarget(targetInfo);
     inst.createSourceManager(inst.getFileManager());
 #if ISPC_LLVM_VERSION < ISPC_LLVM_5_0
-    clang::FrontendInputFile inputFile(infilename, clang::IK_None);
+    clang::FrontendInputFile inputFile(srcbuf, clang::IK_None);
 #else // LLVM 5.0+
-    clang::FrontendInputFile inputFile(infilename, clang::InputKind::Unknown);
+    clang::FrontendInputFile inputFile(srcbuf, clang::InputKind::Unknown);
 #endif
     inst.InitializeSourceManager(inputFile);
 
@@ -3164,7 +3166,7 @@ Module::CompileAndOutput(const char *srcFile,
 
         m->SetTarget(tg);
 
-        if (m->CompileFile() == 0) {
+        if (m->CompileFile(srcFile) == 0) {
 #ifdef ISPC_NVPTX_ENABLED
             /* NVPTX:
              * for PTX target replace '.' with '_' in all global variables 
@@ -3325,7 +3327,7 @@ Module::CompileAndOutput(const char *srcFile,
             }
             targetMachines[tg->getISA()] = tg->GetTargetMachine();
 
-            if (m->CompileFile() == 0) {
+            if (m->CompileFile(srcFile) == 0) {
                 // Create the dispatch module, unless already created;
                 // in the latter case, just do the checking
                 bool check = (dispatchModule != NULL);

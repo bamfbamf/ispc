@@ -84,6 +84,7 @@
     <ClCompile Include="$(Configuration)\lex.cc">
       <DisableSpecificWarnings>4146;4800;4996;4355;4624;4005;4003;4018;4141;4244</DisableSpecificWarnings>
     </ClCompile>
+    <ClCompile Include="ispc_jit.cpp" />
     <ClCompile Include="llvmutil.cpp" />
     <ClCompile Include="module.cpp" />
     <ClCompile Include="main.cpp" />
@@ -110,6 +111,7 @@
     <ClInclude Include="expr.h" />
     <ClInclude Include="func.h" />
     <ClInclude Include="ispc.h" />
+    <ClInclude Include="ispc_jit.h" />
     <ClInclude Include="ispc_version.h" />
     <ClInclude Include="llvmutil.h" />
     <ClInclude Include="module.h" />
@@ -468,7 +470,7 @@
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'AND'$(LLVM_VERSION)'!='LLVM_3_6'AND'$(LLVM_VERSION)'!='LLVM_3_7'">LLVMIRReader.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'">LLVMProfileData.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'">LLVMMCDisassembler.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMOption.lib;LLVMSupport.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMCore.lib;LLVMOption.lib;LLVMSupport.lib;LLVMRuntimeDyld.lib;LLVMOrcJIT.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -492,7 +494,7 @@
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'AND'$(LLVM_VERSION)'!='LLVM_3_6'AND'$(LLVM_VERSION)'!='LLVM_3_7'">LLVMIRReader.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'">LLVMProfileData.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'">LLVMMCDisassembler.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMCore.lib;LLVMOption.lib;LLVMSupport.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMCore.lib;LLVMOption.lib;LLVMSupport.lib;LLVMRuntimeDyld.lib;LLVMOrcJIT.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -520,7 +522,7 @@
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'AND'$(LLVM_VERSION)'!='LLVM_3_6'AND'$(LLVM_VERSION)'!='LLVM_3_7'">LLVMIRReader.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'">LLVMProfileData.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'">LLVMMCDisassembler.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMOption.lib;LLVMSupport.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMCore.lib;LLVMOption.lib;LLVMSupport.lib;LLVMRuntimeDyld.lib;LLVMOrcJIT.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -548,7 +550,7 @@
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'AND'$(LLVM_VERSION)'!='LLVM_3_6'AND'$(LLVM_VERSION)'!='LLVM_3_7'">LLVMIRReader.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'AND'$(LLVM_VERSION)'!='LLVM_3_5'">LLVMProfileData.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'AND'$(LLVM_VERSION)'!='LLVM_3_4'">LLVMMCDisassembler.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMCore.lib;LLVMOption.lib;LLVMSupport.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(LLVM_VERSION)'!='LLVM_3_2'AND'$(LLVM_VERSION)'!='LLVM_3_3'">LLVMCore.lib;LLVMOption.lib;LLVMSupport.lib;LLVMRuntimeDyld.lib;LLVMOrcJIT.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

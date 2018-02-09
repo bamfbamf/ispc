@@ -49,6 +49,7 @@
 
 namespace llvm
 {
+    class MemoryBuffer;
     class raw_string_ostream;
 }
 
@@ -62,26 +63,29 @@ struct DispatchHeaderInfo;
 class Module {
 public:
     /** The Module constructor. */
-    //Module();
+    Module(const char *moduleID);
 
     /** The Module destructor. */
     ~Module();
 
-    /** The name of the source file being compiled should be passed as the
-        module name. */
-    Module(const char *filename);
-
-    /** The Module constructor. */
-    Module(const char *moduleID, const char *filename);
-
-
     /** Set the target. */
     void SetTarget(Target *target);
 
-    /** Compiles the source file passed to the Module constructor, adding
+    /** Compiles the source file passed as argument, adding
         its global variables and functions to both the llvm::Module and
         SymbolTable.  Returns the number of errors during compilation.  */
-    int CompileFile();
+    int CompileFile(const char *filename);
+
+    /** Compiles the source code passed as argument, adding
+        its global variables and functions to both the llvm::Module and
+        SymbolTable.  Returns the number of errors during compilation.  */
+    int Compile(const char* src);
+
+    /** Compiles the memory buffer passed as argument, adding
+    its global variables and functions to both the llvm::Module and
+    SymbolTable.  Returns the number of errors during compilation.  */
+    int Compile(std::unique_ptr<llvm::MemoryBuffer> srcbuf);
+
 
     /** Add a named type definition to the module. */
     void AddTypeDef(const std::string &name, const Type *type,
@@ -223,7 +227,9 @@ private:
                                           const char *outFileName);
     static bool writeBitcode(llvm::Module *module, const char *outFileName);
 
-    void execPreprocessor(const char *infilename, llvm::raw_string_ostream* ostream) const;
+    void execPreprocessor(llvm::MemoryBuffer* srcbuf,
+                          llvm::raw_string_ostream* ostream) const;
+
 };
 
 _ISPC_END

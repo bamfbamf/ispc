@@ -77,7 +77,7 @@
 #endif
 
 #define ISPC_USE_NAMESPACE
-#endif // ISPC_USE_ORC_JIT
+#endif // ISPC_LLVM_ORC
 
 #ifdef ISPC_USE_NAMESPACE
 #define _ISPC_BEGIN namespace ispc {

@@ -46,7 +46,6 @@
 #else
   #include <unistd.h>
 #endif // ISPC_IS_WINDOWS
-#include <llvm/Support/Signals.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 
@@ -232,12 +231,6 @@ static void lGetAllArgs(int Argc, char *Argv[], int &argc, char *argv[128]) {
 }
 
 
-static void
-lSignal(void *) {
-    FATAL("Unhandled signal sent to process; terminating.");
-}
-
-
 static int ParsingPhaseName(char * stage) {
     if (strncmp(stage, "first", 5) == 0) {
         return 0;
@@ -307,37 +300,7 @@ int main(int Argc, char *Argv[]) {
     char *argv[128];
     lGetAllArgs(Argc, Argv, argc, argv);
 
-    llvm::sys::AddSignalHandler(lSignal, NULL);
-
-    // initialize available LLVM targets
-#ifndef __arm__
-    // FIXME: LLVM build on ARM doesn't build the x86 targets by default.
-    // It's not clear that anyone's going to want to generate x86 from an
-    // ARM host, though...
-    LLVMInitializeX86TargetInfo();
-    LLVMInitializeX86Target();
-    LLVMInitializeX86AsmPrinter();
-    LLVMInitializeX86AsmParser();
-    LLVMInitializeX86Disassembler();
-    LLVMInitializeX86TargetMC();
-#endif // !__ARM__
-
-#ifdef ISPC_ARM_ENABLED
-    // Generating ARM from x86 is more likely to be useful, though.
-    LLVMInitializeARMTargetInfo();
-    LLVMInitializeARMTarget();
-    LLVMInitializeARMAsmPrinter();
-    LLVMInitializeARMAsmParser();
-    LLVMInitializeARMDisassembler();
-    LLVMInitializeARMTargetMC();
-#endif
-
-#ifdef ISPC_NVPTX_ENABLED
-    LLVMInitializeNVPTXTargetInfo();
-    LLVMInitializeNVPTXTarget();
-    LLVMInitializeNVPTXAsmPrinter();
-    LLVMInitializeNVPTXTargetMC();
-#endif /* ISPC_NVPTX_ENABLED */
+    ispcInit();
 
     char *file = NULL;
     const char *headerFileName = NULL;
@@ -346,10 +309,6 @@ int main(int Argc, char *Argv[]) {
     const char *depsFileName = NULL;
     const char *hostStubFileName = NULL;
     const char *devStubFileName = NULL;
-    // Initiailize globals early so that we can set various option values
-    // as we're parsing below
-    g = new GlobalOptions;
-    gm = new ModuleOptions;
 
     Module::OutputType ot = Module::Object;
     bool generatePIC = false;
@@ -654,8 +613,7 @@ int main(int Argc, char *Argv[]) {
                                     hostStubFileName,
                                     devStubFileName);
 
-    delete g;
-    delete gm;
+    ispcTerminate();
 
     return r;
 }

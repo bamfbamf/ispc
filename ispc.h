@@ -718,6 +718,15 @@ extern GlobalOptions *g;
 extern ModuleOptions *gm;
 extern Module *m;
 
+/** Initializes the ISPC library. */
+int ispcInit();
+
+/** Terminates the ISPC library. */
+void ispcTerminate();
+
+/** Delete global module options. */
+void ispcDeleteModuleOptionsGlobal();
+
 _ISPC_END
 
 #endif // ISPC_H

@@ -90,6 +90,7 @@
   #include <llvm/IR/DataLayout.h>
   #include <llvm/IR/Attributes.h>
 #endif
+#include <llvm/Support/Signals.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/Host.h>
@@ -98,6 +99,7 @@ _ISPC_BEGIN
 
 GlobalOptions *g;
 ModuleOptions *gm;
+ModuleOptions *gmGlobal;
 Module *m;
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1639,6 +1641,75 @@ Union(const SourcePos &p1, const SourcePos &p2) {
     ret.last_line = std::max(p1.last_line, p2.last_line);
     ret.last_column = std::max(p1.last_column, p2.last_column);
     return ret;
+}
+
+
+static void
+lSignal(void *) {
+  FATAL("Unhandled signal sent to process; terminating.");
+}
+
+
+int ispcInit() {
+    llvm::sys::AddSignalHandler(lSignal, NULL);
+
+    // initialize available LLVM targets
+#ifndef __arm__
+    // FIXME: LLVM build on ARM doesn't build the x86 targets by default.
+    // It's not clear that anyone's going to want to generate x86 from an
+    // ARM host, though...
+    LLVMInitializeX86TargetInfo();
+    LLVMInitializeX86Target();
+    LLVMInitializeX86AsmPrinter();
+    LLVMInitializeX86AsmParser();
+    LLVMInitializeX86Disassembler();
+    LLVMInitializeX86TargetMC();
+#endif // !__ARM__
+
+#ifdef ISPC_ARM_ENABLED
+    // Generating ARM from x86 is more likely to be useful, though.
+    LLVMInitializeARMTargetInfo();
+    LLVMInitializeARMTarget();
+    LLVMInitializeARMAsmPrinter();
+    LLVMInitializeARMAsmParser();
+    LLVMInitializeARMDisassembler();
+    LLVMInitializeARMTargetMC();
+#endif
+
+#ifdef ISPC_NVPTX_ENABLED
+    LLVMInitializeNVPTXTargetInfo();
+    LLVMInitializeNVPTXTarget();
+    LLVMInitializeNVPTXAsmPrinter();
+    LLVMInitializeNVPTXTargetMC();
+#endif /* ISPC_NVPTX_ENABLED */
+
+    // Initiailize globals early so that we can set various option values
+    // as we're parsing below
+    g = new GlobalOptions;
+    gm = new ModuleOptions;
+    gmGlobal = gm;
+
+    return 0;
+}
+
+
+void ispcDeleteModuleOptionsGlobal() {
+  if (gm) {
+    // assert if it isn't the global instance.
+    assert(gm == gmGlobal);
+    delete gm;
+    gm = NULL;
+  }
+}
+
+
+void ispcTerminate() {
+  ispcDeleteModuleOptionsGlobal();
+
+  if (g) {
+    delete g;
+    g = NULL;
+  }
 }
 
 _ISPC_END

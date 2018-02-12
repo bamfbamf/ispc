@@ -35,6 +35,8 @@
     @brief main() entrypoint implementation for ispc
 */
 
+#ifndef ISPC_LIBISPC_ENABLED
+
 #include "ispc.h"
 #include "module.h"
 #include "util.h"
@@ -617,3 +619,5 @@ int main(int Argc, char *Argv[]) {
 
     return r;
 }
+
+#endif //ISPC_LIBISPC_ENABLED

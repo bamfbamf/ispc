@@ -77,6 +77,11 @@ ARM_ENABLED=0
 # To enable: make NVPTX_ENABLED=1
 NVPTX_ENABLED=0
 
+# Enable libispc by request
+# To enable: make LIBISPC_ENABLED=1
+LIBISPC_ENABLED=0
+
+
 # Add llvm bin to the path so any scripts run will go to the right llvm-config
 LLVM_BIN= $(shell $(LLVM_CONFIG) --bindir)
 export PATH:=$(LLVM_BIN):$(PATH)
@@ -160,6 +165,8 @@ else
     BUILD_VERSION:=$(GIT_REVISION)
 endif
 
+AR=ar
+
 CXX=clang++
 OPT=-O2
 WERROR=-Werror
@@ -178,6 +185,9 @@ ifneq ($(ARM_ENABLED), 0)
 endif
 ifneq ($(NVPTX_ENABLED), 0)
     CXXFLAGS+=-DISPC_NVPTX_ENABLED
+endif
+ifneq ($(LIBISPC_ENABLED), 0)
+    CXXFLAGS+=-DISPC_LIBISPC_ENABLED
 endif
 
 LDFLAGS=
@@ -255,7 +265,7 @@ print_llvm_src: llvm_check
 	@echo Using compiler to build: `$(CXX) --version | head -1`
 
 clean:
-	/bin/rm -rf objs ispc
+	/bin/rm -rf objs ispc libispc.a
 
 doxygen:
 	/bin/rm -rf docs/doxygen
@@ -264,6 +274,10 @@ doxygen:
 ispc: print_llvm_src dirs $(OBJS)
 	@echo Creating ispc executable
 	@$(CXX) $(OPT) $(LDFLAGS) -o $@ $(OBJS) $(ISPC_LIBS)
+
+libispc: print_llvm_src dirs $(OBJS)
+  @echo Creating libispc
+	@$(AR) rs $@.a $(OBJS)
 
 # Use clang as a default compiler, instead of gcc
 # This is default now.

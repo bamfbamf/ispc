@@ -37,7 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ispc_jit.h"
 
-#ifdef ISPC_LLVM_ORC
+#ifdef ISPC_LIBISPC_ENABLED
 
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
@@ -103,4 +103,4 @@ void IspcJIT::removeModule(ModuleHandle H) {
 
 _ISPC_END
 
-#endif // ISPC_LLVM_ORC
+#endif // ISPC_LIBISPC_ENABLED

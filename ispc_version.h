@@ -71,13 +71,13 @@
 #error "Unhandled LLVM version"
 #endif
 
-#ifdef ISPC_LLVM_ORC
+#ifdef ISPC_LIBISPC_ENABLED
 #if ISPC_LLVM_VERSION < ISPC_LLVM_3_7
 #error "Invalid LLVM version 3.7+ required"
 #endif
 
 #define ISPC_USE_NAMESPACE
-#endif // ISPC_LLVM_ORC
+#endif // ISPC_LIBISPC_ENABLED
 
 #ifdef ISPC_USE_NAMESPACE
 #define _ISPC_BEGIN namespace ispc {

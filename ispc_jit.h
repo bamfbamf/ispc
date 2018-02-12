@@ -31,7 +31,6 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 /** @file ispc_jit.h
     @brief Main ispc jit header file.
 */
@@ -39,10 +38,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef ISPC_JIT_H
 #define ISPC_JIT_H
 
-#include "ispc.h"
-#ifdef ISPC_LLVM_ORC
+#ifdef ISPC_LIBISPC_ENABLED
 
-#include <memory>
+#include "ispc.h"
 
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
 #include <llvm/ExecutionEngine/Orc/IRCompileLayer.h>
@@ -51,12 +49,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <llvm/IR/Module.h>
 #include <llvm/Target/TargetMachine.h>
 
-namespace llvm {
+#include <memory>
 
+// Forward declarations of LLVM types
+namespace llvm {
 class SectionMemoryManager;
 
 namespace orc {
-
 template <typename BaseLayerT, typename CompileFtor> class IRCompileLayer;
 class RTDyldObjectLinkingLayer;
 class SimpleCompiler;
@@ -114,5 +113,5 @@ private:
 
 _ISPC_END
 
-#endif // ISPC_LLVM_ORC
+#endif // ISPC_LIBISPC_ENABLED
 #endif // ISPC_JIT_H

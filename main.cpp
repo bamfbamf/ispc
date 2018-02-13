@@ -302,7 +302,7 @@ int main(int Argc, char *Argv[]) {
     char *argv[128];
     lGetAllArgs(Argc, Argv, argc, argv);
 
-    ispcInit();
+    ispcInit(true);
 
     char *file = NULL;
     const char *headerFileName = NULL;
@@ -312,9 +312,8 @@ int main(int Argc, char *Argv[]) {
     const char *hostStubFileName = NULL;
     const char *devStubFileName = NULL;
 
+    TargetOptions topt;
     Module::OutputType ot = Module::Object;
-    bool generatePIC = false;
-    const char *arch = NULL, *cpu = NULL, *target = NULL;
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--help"))
@@ -326,9 +325,9 @@ int main(int Argc, char *Argv[]) {
         else if (!strncmp(argv[i], "--addressing=", 13)) {
             if (atoi(argv[i] + 13) == 64)
                 // FIXME: this doesn't make sense on 32 bit platform.
-                gm->opt.force32BitAddressing = false;
+                topt.force32BitAddressing = false;
             else if (atoi(argv[i] + 13) == 32)
-                gm->opt.force32BitAddressing = true;
+                topt.force32BitAddressing = true;
             else {
                 fprintf(stderr, "Addressing width \"%s\" invalid--only 32 and "
                         "64 are allowed.\n", argv[i]+13);
@@ -336,9 +335,9 @@ int main(int Argc, char *Argv[]) {
             }
         }
         else if (!strncmp(argv[i], "--arch=", 7))
-            arch = argv[i] + 7;
+            topt.arch = argv[i] + 7;
         else if (!strncmp(argv[i], "--cpu=", 6))
-            cpu = argv[i] + 6;
+            topt.cpu = argv[i] + 6;
         else if (!strcmp(argv[i], "--fast-math")) {
             fprintf(stderr, "--fast-math option has been renamed to --opt=fast-math!\n");
             usage(1);
@@ -403,10 +402,10 @@ int main(int Argc, char *Argv[]) {
                 fprintf(stderr, "No target specified after --target option.\n");
                 usage(1);
             }
-            target = argv[i];
+            topt.isa = argv[i];
         }
         else if (!strncmp(argv[i], "--target=", 9))
-            target = argv[i] + 9;
+            topt.isa = argv[i] + 9;
         else if (!strncmp(argv[i], "--math-lib=", 11)) {
             const char *lib = argv[i] + 11;
             if (!strcmp(lib, "default"))
@@ -433,7 +432,7 @@ int main(int Argc, char *Argv[]) {
             else if (!strcmp(opt, "disable-loop-unroll"))
                 gm->opt.unrollLoops = false;
             else if (!strcmp(opt, "disable-fma"))
-                gm->opt.disableFMA = true;
+                topt.disableFMA = true;
             else if (!strcmp(opt, "force-aligned-memory"))
                 gm->opt.forceAlignedMemory = true;
 
@@ -514,7 +513,7 @@ int main(int Argc, char *Argv[]) {
             gm->runCPP = false;
 #ifndef ISPC_IS_WINDOWS
         else if (!strcmp(argv[i], "--pic"))
-            generatePIC = true;
+            topt.pic = true;
         else if (!strcmp(argv[i], "--colored-output"))
             g->forceColoredOutput = true;
 #endif // !ISPC_IS_WINDOWS
@@ -606,7 +605,8 @@ int main(int Argc, char *Argv[]) {
               "Program will be compiled and warnings/errors will "
               "be issued, but no output will be generated.");
 
-    int r = Module::CompileAndOutput(file, arch, cpu, target, generatePIC,
+    int r = Module::CompileAndOutput(file,
+                                    topt,
                                     ot,
                                     outFileName,
                                     headerFileName,

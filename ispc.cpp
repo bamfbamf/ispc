@@ -97,10 +97,23 @@
 
 _ISPC_BEGIN
 
-GlobalOptions *g;
-ModuleOptions *gm;
-ModuleOptions *gmGlobal;
-Module *m;
+bool gmGlobal = false;
+GlobalOptions * g = NULL;
+ModuleOptions * gm = NULL;
+Module * m = NULL;
+
+///////////////////////////////////////////////////////////////////////////
+// TargetOptions
+
+TargetOptions::TargetOptions() {
+    arch = NULL;
+    cpu = NULL;
+    isa = NULL;
+    pic = false;
+    force32BitAddressing = true;
+    disableFMA = false;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////
 // Target
@@ -474,8 +487,7 @@ public:
 };
 
 
-Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
-               bool printTarget, std::string genericAsSmth) :
+Target::Target(TargetOptions opt, bool printTarget, std::string genericAsSmth) :
     m_target(NULL),
     m_targetMachine(NULL),
     m_dataLayout(NULL),
@@ -484,16 +496,14 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
     m_treatGenericAsSmth(genericAsSmth),
     m_arch(""),
     m_is32Bit(true),
+    m_force32BitAddressing(opt.force32BitAddressing),
     m_cpu(""),
     m_attributes(""),
-#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3 
-    m_tf_attributes(NULL),
-#endif
     m_nativeVectorWidth(-1),
     m_nativeVectorAlignment(-1),
     m_dataTypeWidth(-1),
     m_vectorWidth(-1),
-    m_generatePIC(pic),
+    m_generatePIC(opt.pic),
     m_maskingIsFree(false),
     m_maskBitCount(-1),
     m_hasHalf(false),
@@ -509,53 +519,53 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
     CPUtype CPUID = CPU_None, CPUfromISA = CPU_None;
     AllCPUs a;
 
-    if (cpu) {
-        CPUID = a.GetTypeFromName(cpu);
+    if (opt.cpu) {
+        CPUID = a.GetTypeFromName(opt.cpu);
         if (CPUID == CPU_None) {
             Error(SourcePos(), "Error: CPU type \"%s\" unknown. Supported"
-                  " CPUs: %s.", cpu, a.HumanReadableListOfNames().c_str());
+                  " CPUs: %s.", opt.cpu, a.HumanReadableListOfNames().c_str());
             return;
         }
     }
 
-    if (isa == NULL) {
+    if (opt.isa == NULL) {
         // If a CPU was specified explicitly, try to pick the best
         // possible ISA based on that.
         switch (CPUID) {
             case CPU_None:
                 // No CPU and no ISA, so use system info to figure out
                 // what this CPU supports.
-                isa = lGetSystemISA();
+                opt.isa = lGetSystemISA();
                 Warning(SourcePos(), "No --target specified on command-line."
-                        " Using default system target \"%s\".", isa);
+                        " Using default system target \"%s\".", opt.isa);
                 break;
 
             case CPU_Generic:
-                isa = "generic-1";
+                opt.isa = "generic-1";
                 break;
 
 #ifdef ISPC_NVPTX_ENABLED
             case CPU_SM35:
-                isa = "nvptx";
+                opt.isa = "nvptx";
                 break;
 #endif
 
 #ifdef ISPC_ARM_ENABLED
             case CPU_CortexA9:
             case CPU_CortexA15:
-                isa = "neon-i32x4";
+                opt.isa = "neon-i32x4";
                 break;
 #endif
 
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
             case CPU_KNL:
-                isa = "avx512knl-i32x16";
+                opt.isa = "avx512knl-i32x16";
                 break;
 #endif
 
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_8 // LLVM 3.8+
             case CPU_SKX:
-                isa = "avx512skx-i32x16";
+                opt.isa = "avx512skx-i32x16";
                 break;
 #endif
 
@@ -563,15 +573,15 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
             case CPU_Broadwell:
 #endif
             case CPU_Haswell:
-                isa = "avx2-i32x8";
+                opt.isa = "avx2-i32x8";
                 break;
 
             case CPU_IvyBridge:
-                isa = "avx1.1-i32x8";
+                opt.isa = "avx1.1-i32x8";
                 break;
 
             case CPU_SandyBridge:
-                isa = "avx1-i32x8";
+                opt.isa = "avx1-i32x8";
                 break;
 
             // Penryn is here because ISPC does not use SSE 4.2
@@ -580,40 +590,40 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_4
             case CPU_Silvermont:
 #endif
-                isa = "sse4-i32x4";
+                opt.isa = "sse4-i32x4";
                 break;
 
             default:
-                isa = "sse2-i32x4";
+                opt.isa = "sse2-i32x4";
                 break;
         }
         if (CPUID != CPU_None)
             Warning(SourcePos(), "No --target specified on command-line."
                     " Using ISA \"%s\" based on specified CPU \"%s\".",
-                    isa, cpu);
+                    opt.isa, opt.cpu);
     }
 
-    if (!strcasecmp(isa, "host")) {
-        isa = lGetSystemISA();
+    if (!strcasecmp(opt.isa, "host")) {
+        opt.isa = lGetSystemISA();
     }
 
-    if (arch == NULL) {
+    if (opt.arch == NULL) {
 #ifdef ISPC_ARM_ENABLED
-        if (!strncmp(isa, "neon", 4))
-            arch = "arm";
+        if (!strncmp(opt.isa, "neon", 4))
+            opt.arch = "arm";
         else
 #endif
 #ifdef ISPC_NVPTX_ENABLED
-         if(!strncmp(isa, "nvptx", 5))
-           arch = "nvptx64";
+         if(!strncmp(opt.isa, "nvptx", 5))
+            opt.arch = "nvptx64";
          else
 #endif /* ISPC_NVPTX_ENABLED */
-            arch = "x86-64";
+            opt.arch = "x86-64";
     }
 
     // Define arch alias
-    if (std::string(arch) == "x86_64")
-        arch = "x86-64";
+    if (std::string(opt.arch) == "x86_64")
+        opt.arch = "x86-64";
 
     bool error = false;
 
@@ -626,13 +636,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
     for (llvm::TargetRegistry::iterator iter = llvm::TargetRegistry::begin();
          iter != llvm::TargetRegistry::end(); ++iter) {
 #endif
-        if (std::string(arch) == iter->getName()) {
+        if (std::string(opt.arch) == iter->getName()) {
             this->m_target = &*iter;
             break;
         }
     }
     if (this->m_target == NULL) {
-        fprintf(stderr, "Invalid architecture \"%s\"\nOptions: ", arch);
+        fprintf(stderr, "Invalid architecture \"%s\"\nOptions: ", opt.arch);
         llvm::TargetRegistry::iterator iter;
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
         for (iter = llvm::TargetRegistry::targets().begin();
@@ -646,12 +656,12 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         error = true;
     }
     else {
-        this->m_arch = arch;
+        this->m_arch = opt.arch;
     }
 
     // Check default LLVM generated targets
-    if (!strcasecmp(isa, "sse2") ||
-        !strcasecmp(isa, "sse2-i32x4")) {
+    if (!strcasecmp(opt.isa, "sse2") ||
+        !strcasecmp(opt.isa, "sse2-i32x4")) {
         this->m_isa = Target::SSE2;
         this->m_nativeVectorWidth = 4;
         this->m_nativeVectorAlignment = 16;
@@ -661,8 +671,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_Core2;
     }
-    else if (!strcasecmp(isa, "sse2-x2") ||
-             !strcasecmp(isa, "sse2-i32x8")) {
+    else if (!strcasecmp(opt.isa, "sse2-x2") ||
+             !strcasecmp(opt.isa, "sse2-i32x8")) {
         this->m_isa = Target::SSE2;
         this->m_nativeVectorWidth = 4;
         this->m_nativeVectorAlignment = 16;
@@ -672,8 +682,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_Core2;
     }
-    else if (!strcasecmp(isa, "sse4") ||
-             !strcasecmp(isa, "sse4-i32x4")) {
+    else if (!strcasecmp(opt.isa, "sse4") ||
+             !strcasecmp(opt.isa, "sse4-i32x4")) {
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 4;
         this->m_nativeVectorAlignment = 16;
@@ -683,9 +693,9 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_Nehalem;
     }
-    else if (!strcasecmp(isa, "sse4x2") ||
-             !strcasecmp(isa, "sse4-x2") ||
-             !strcasecmp(isa, "sse4-i32x8")) {
+    else if (!strcasecmp(opt.isa, "sse4x2") ||
+             !strcasecmp(opt.isa, "sse4-x2") ||
+             !strcasecmp(opt.isa, "sse4-i32x8")) {
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 4;
         this->m_nativeVectorAlignment = 16;
@@ -695,7 +705,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_Nehalem;
     }
-    else if (!strcasecmp(isa, "sse4-i8x16")) {
+    else if (!strcasecmp(opt.isa, "sse4-i8x16")) {
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 16;
         this->m_nativeVectorAlignment = 16;
@@ -705,7 +715,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 8;
         CPUfromISA = CPU_Nehalem;
     }
-    else if (!strcasecmp(isa, "sse4-i16x8")) {
+    else if (!strcasecmp(opt.isa, "sse4-i16x8")) {
         this->m_isa = Target::SSE4;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 16;
@@ -715,8 +725,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 16;
         CPUfromISA = CPU_Nehalem;
     }
-    else if (!strcasecmp(isa, "generic-4") ||
-             !strcasecmp(isa, "generic-x4")) {
+    else if (!strcasecmp(opt.isa, "generic-4") ||
+             !strcasecmp(opt.isa, "generic-x4")) {
         this->m_isa = Target::GENERIC;
         this->m_nativeVectorWidth = 4;
         this->m_nativeVectorAlignment = 16;
@@ -730,8 +740,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRsqrtd = this->m_hasRcpd = true;
         CPUfromISA = CPU_Generic;
     }
-    else if (!strcasecmp(isa, "generic-8") ||
-             !strcasecmp(isa, "generic-x8")) {
+    else if (!strcasecmp(opt.isa, "generic-8") ||
+             !strcasecmp(opt.isa, "generic-x8")) {
         this->m_isa = Target::GENERIC;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -745,16 +755,16 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRsqrtd = this->m_hasRcpd = true;
         CPUfromISA = CPU_Generic;
     }
-    else if (!strcasecmp(isa, "generic-16") ||
-             !strcasecmp(isa, "generic-x16") ||
+    else if (!strcasecmp(opt.isa, "generic-16") ||
+             !strcasecmp(opt.isa, "generic-x16") ||
              // We treat *-generic-16 as generic-16, but with special name mangling
-             strstr(isa, "-generic-16") || 
-             strstr(isa, "-generic-x16")) {
+             strstr(opt.isa, "-generic-16") ||
+             strstr(opt.isa, "-generic-x16")) {
         this->m_isa = Target::GENERIC;
-        if (strstr(isa, "-generic-16") ||
-            strstr(isa, "-generic-x16")) {
+        if (strstr(opt.isa, "-generic-16") ||
+            strstr(opt.isa, "-generic-x16")) {
             // It is used for appropriate name mangling and dispatch function during multitarget compilation
-            this->m_treatGenericAsSmth = isa;
+            this->m_treatGenericAsSmth = opt.isa;
             // We need to create appropriate name for mangling.
             // Remove "-x16" or "-16" and replace "-" with "_".
             this->m_treatGenericAsSmth = this->m_treatGenericAsSmth.substr(0, this->m_treatGenericAsSmth.find_last_of("-"));
@@ -777,8 +787,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasVecPrefetch = true;
         CPUfromISA = CPU_Generic;
     }
-    else if (!strcasecmp(isa, "generic-32") ||
-             !strcasecmp(isa, "generic-x32")) {
+    else if (!strcasecmp(opt.isa, "generic-32") ||
+             !strcasecmp(opt.isa, "generic-x32")) {
         this->m_isa = Target::GENERIC;
         this->m_nativeVectorWidth = 32;
         this->m_nativeVectorAlignment = 64;
@@ -792,8 +802,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRsqrtd = this->m_hasRcpd = true;
         CPUfromISA = CPU_Generic;
     }
-    else if (!strcasecmp(isa, "generic-64") ||
-             !strcasecmp(isa, "generic-x64")) {
+    else if (!strcasecmp(opt.isa, "generic-64") ||
+             !strcasecmp(opt.isa, "generic-x64")) {
         this->m_isa = Target::GENERIC;
         this->m_nativeVectorWidth = 64;
         this->m_nativeVectorAlignment = 64;
@@ -807,8 +817,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRsqrtd = this->m_hasRcpd = true;
         CPUfromISA = CPU_Generic;
     }
-    else if (!strcasecmp(isa, "generic-1") ||
-             !strcasecmp(isa, "generic-x1")) {
+    else if (!strcasecmp(opt.isa, "generic-1") ||
+             !strcasecmp(opt.isa, "generic-x1")) {
         this->m_isa = Target::GENERIC;
         this->m_nativeVectorWidth = 1;
         this->m_nativeVectorAlignment = 16;
@@ -817,7 +827,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_Generic;
     }
-    else if (!strcasecmp(isa, "avx1-i32x4")) {
+    else if (!strcasecmp(opt.isa, "avx1-i32x4")) {
         this->m_isa = Target::AVX;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -827,9 +837,9 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_SandyBridge;
     }
-    else if (!strcasecmp(isa, "avx") ||
-             !strcasecmp(isa, "avx1") ||
-             !strcasecmp(isa, "avx1-i32x8")) {
+    else if (!strcasecmp(opt.isa, "avx") ||
+             !strcasecmp(opt.isa, "avx1") ||
+             !strcasecmp(opt.isa, "avx1-i32x8")) {
         this->m_isa = Target::AVX;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -839,8 +849,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_SandyBridge;
     }
-    else if (!strcasecmp(isa, "avx-i64x4") ||
-             !strcasecmp(isa, "avx1-i64x4")) {
+    else if (!strcasecmp(opt.isa, "avx-i64x4") ||
+             !strcasecmp(opt.isa, "avx1-i64x4")) {
         this->m_isa = Target::AVX;
         this->m_nativeVectorWidth = 8;  /* native vector width in terms of floats */
         this->m_nativeVectorAlignment = 32;
@@ -850,9 +860,9 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 64;
         CPUfromISA = CPU_SandyBridge;
     }
-    else if (!strcasecmp(isa, "avx-x2") ||
-             !strcasecmp(isa, "avx1-x2") ||
-             !strcasecmp(isa, "avx1-i32x16")) {
+    else if (!strcasecmp(opt.isa, "avx-x2") ||
+             !strcasecmp(opt.isa, "avx1-x2") ||
+             !strcasecmp(opt.isa, "avx1-i32x16")) {
         this->m_isa = Target::AVX;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -862,8 +872,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskBitCount = 32;
         CPUfromISA = CPU_SandyBridge;
     }
-    else if (!strcasecmp(isa, "avx1.1") ||
-             !strcasecmp(isa, "avx1.1-i32x8")) {
+    else if (!strcasecmp(opt.isa, "avx1.1") ||
+             !strcasecmp(opt.isa, "avx1.1-i32x8")) {
         this->m_isa = Target::AVX11;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -875,8 +885,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRand = true;
         CPUfromISA = CPU_IvyBridge;
     }
-    else if (!strcasecmp(isa, "avx1.1-x2") ||
-             !strcasecmp(isa, "avx1.1-i32x16")) {
+    else if (!strcasecmp(opt.isa, "avx1.1-x2") ||
+             !strcasecmp(opt.isa, "avx1.1-i32x16")) {
         this->m_isa = Target::AVX11;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -888,7 +898,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRand = true;
         CPUfromISA = CPU_IvyBridge;
     }
-    else if (!strcasecmp(isa, "avx1.1-i64x4")) {
+    else if (!strcasecmp(opt.isa, "avx1.1-i64x4")) {
         this->m_isa = Target::AVX11;
         this->m_nativeVectorWidth = 8;  /* native vector width in terms of floats */
         this->m_nativeVectorAlignment = 32;
@@ -900,8 +910,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasRand = true;
         CPUfromISA = CPU_IvyBridge;
     }
-    else if (!strcasecmp(isa, "avx2") ||
-             !strcasecmp(isa, "avx2-i32x8")) {
+    else if (!strcasecmp(opt.isa, "avx2") ||
+             !strcasecmp(opt.isa, "avx2-i32x8")) {
         this->m_isa = Target::AVX2;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 32;
@@ -914,8 +924,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasGather = true;
         CPUfromISA = CPU_Haswell;
     }
-    else if (!strcasecmp(isa, "avx2-x2") ||
-             !strcasecmp(isa, "avx2-i32x16")) {
+    else if (!strcasecmp(opt.isa, "avx2-x2") ||
+             !strcasecmp(opt.isa, "avx2-i32x16")) {
         this->m_isa = Target::AVX2;
         this->m_nativeVectorWidth = 16;
         this->m_nativeVectorAlignment = 32;
@@ -928,7 +938,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_hasGather = true;
         CPUfromISA = CPU_Haswell;
     }
-    else if (!strcasecmp(isa, "avx2-i64x4")) {
+    else if (!strcasecmp(opt.isa, "avx2-i64x4")) {
         this->m_isa = Target::AVX2;
         this->m_nativeVectorWidth = 8;  /* native vector width in terms of floats */
         this->m_nativeVectorAlignment = 32;
@@ -942,7 +952,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         CPUfromISA = CPU_Haswell;
     }
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_7 // LLVM 3.7+
-    else if (!strcasecmp(isa, "avx512knl-i32x16")) {
+    else if (!strcasecmp(opt.isa, "avx512knl-i32x16")) {
         this->m_isa = Target::KNL_AVX512;
         this->m_nativeVectorWidth = 16;
         this->m_nativeVectorAlignment = 64;
@@ -962,7 +972,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
     }
 #endif
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_8 // LLVM 3.8+
-    else if (!strcasecmp(isa, "avx512skx-i32x16")) {
+    else if (!strcasecmp(opt.isa, "avx512skx-i32x16")) {
         this->m_isa = Target::SKX_AVX512;
         this->m_nativeVectorWidth = 16;
         this->m_nativeVectorAlignment = 64;
@@ -982,7 +992,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
     }
 #endif
 #ifdef ISPC_ARM_ENABLED
-    else if (!strcasecmp(isa, "neon-i8x16")) {
+    else if (!strcasecmp(opt.isa, "neon-i8x16")) {
         this->m_isa = Target::NEON8;
         this->m_nativeVectorWidth = 16;
         this->m_nativeVectorAlignment = 16;
@@ -993,7 +1003,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 8;
     }
-    else if (!strcasecmp(isa, "neon-i16x8")) {
+    else if (!strcasecmp(opt.isa, "neon-i16x8")) {
         this->m_isa = Target::NEON16;
         this->m_nativeVectorWidth = 8;
         this->m_nativeVectorAlignment = 16;
@@ -1004,8 +1014,8 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         this->m_maskingIsFree = false;
         this->m_maskBitCount = 16;
     }
-    else if (!strcasecmp(isa, "neon") ||
-             !strcasecmp(isa, "neon-i32x4")) {
+    else if (!strcasecmp(opt.isa, "neon") ||
+             !strcasecmp(opt.isa, "neon-i32x4")) {
         this->m_isa = Target::NEON32;
         this->m_nativeVectorWidth = 4;
         this->m_nativeVectorAlignment = 16;
@@ -1018,7 +1028,7 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
     }
 #endif
 #ifdef ISPC_NVPTX_ENABLED
-    else if (!strcasecmp(isa, "nvptx")) {
+    else if (!strcasecmp(opt.isa, "nvptx")) {
         this->m_isa = Target::NVPTX;
         this->m_cpu = "sm_35";
         this->m_nativeVectorWidth = 32;
@@ -1035,30 +1045,30 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
 #endif /* ISPC_NVPTX_ENABLED */
     else {
         Error(SourcePos(), "Target \"%s\" is unknown.  Choices are: %s.",
-              isa, SupportedTargets());
+              opt.isa, SupportedTargets());
         error = true;
     }
 
 #if defined(ISPC_ARM_ENABLED) && !defined(__arm__)
-    if ((CPUID == CPU_None) && !strncmp(isa, "neon", 4))
+    if ((CPUID == CPU_None) && !strncmp(opt.isa, "neon", 4))
         CPUID = CPU_CortexA9;
 #endif
 
     if (CPUID == CPU_None) {
 #ifndef ISPC_ARM_ENABLED
-        if (isa == NULL) {
+        if (opt.isa == NULL) {
 #endif
             std::string hostCPU = llvm::sys::getHostCPUName();
             if (hostCPU.size() > 0)
-                cpu = strdup(hostCPU.c_str());
+                opt.cpu = strdup(hostCPU.c_str());
             else {
                 Warning(SourcePos(), "Unable to determine host CPU!\n");
-                cpu = a.GetDefaultNameFromType(CPU_Generic).c_str();
+                opt.cpu = a.GetDefaultNameFromType(CPU_Generic).c_str();
             }
 #ifndef ISPC_ARM_ENABLED
         }
         else {
-            cpu = a.GetDefaultNameFromType(CPUfromISA).c_str();
+            opt.cpu = a.GetDefaultNameFromType(CPUfromISA).c_str();
         }
 #endif
     }
@@ -1067,12 +1077,12 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
             !a.BackwardCompatible(CPUID, CPUfromISA)) {
             Error(SourcePos(), "The requested CPU is incompatible"
                   " with the CPU %s needs: %s vs. %s!\n",
-                  isa, cpu, a.GetDefaultNameFromType(CPUfromISA).c_str());
+                  opt.isa, opt.cpu, a.GetDefaultNameFromType(CPUfromISA).c_str());
             return;
         }
-        cpu = a.GetDefaultNameFromType(CPUID).c_str();
+        opt.cpu = a.GetDefaultNameFromType(CPUID).c_str();
     }
-    this->m_cpu = cpu;
+    this->m_cpu = opt.cpu;
 
     if (!error) {
         // Create TargetMachine
@@ -1094,13 +1104,13 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
             m_isa == Target::NEON32)
             options.FloatABIType = llvm::FloatABI::Hard;
 #endif
-        if (gm->opt.disableFMA == false)
+        if (opt.disableFMA == false)
             options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6
         if (g->NoOmitFramePointer)
             options.NoFramePointerElim = true;
 #ifdef ISPC_IS_WINDOWS
-        if (strcmp("x86", arch) == 0) {
+        if (strcmp("x86", opt.arch) == 0) {
             // Workaround for issue #503 (LLVM issue 14646).
             // It's Win32 specific.
             options.NoFramePointerElim = true;
@@ -1162,28 +1172,6 @@ Target::Target(const char *arch, const char *cpu, const char *isa, bool pic,
         // FIXME: all generic targets are handled as 64 bit, which is incorrect.
 
         this->m_is32Bit = (getDataLayout()->getPointerSize() == 4);
-
-#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3
-        // This is LLVM 3.3+ feature.
-        // Initialize target-specific "target-feature" attribute.
-        if (!m_attributes.empty()) {
-            llvm::AttrBuilder attrBuilder;
-#ifdef ISPC_NVPTX_ENABLED
-            if (m_isa != Target::NVPTX)
-#endif
-            attrBuilder.addAttribute("target-cpu", this->m_cpu);
-            attrBuilder.addAttribute("target-features", this->m_attributes);
-#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
-            this->m_tf_attributes = new llvm::AttributeSet(
-                llvm::AttributeSet::get(
-                    *m->ctx,
-                    llvm::AttributeSet::FunctionIndex,
-                    attrBuilder));
-#else // LLVM 5.0+
-            this->m_tf_attributes = new llvm::AttrBuilder(attrBuilder);
-#endif
-        }
-#endif
 
         Assert(this->m_vectorWidth <= ISPC_MAX_NVEC);
     }
@@ -1433,7 +1421,7 @@ Target::SizeOf(llvm::Type *type,
                                             arrayRef, "sizeof_gep",
                                             insertAtEnd);
 #endif
-        if (m_is32Bit || gm->opt.force32BitAddressing)
+        if (m_is32Bit || m_force32BitAddressing)
             return new llvm::PtrToIntInst(gep, LLVMTypes::Int32Type,
                                           "sizeof_int", insertAtEnd);
         else
@@ -1442,7 +1430,7 @@ Target::SizeOf(llvm::Type *type,
     }
 
     uint64_t byteSize = getDataLayout()->getTypeStoreSize(type);
-    if (m_is32Bit || gm->opt.force32BitAddressing)
+    if (m_is32Bit || m_force32BitAddressing)
         return LLVMInt32((int32_t)byteSize);
     else
         return LLVMInt64(byteSize);
@@ -1468,7 +1456,7 @@ Target::StructOffset(llvm::Type *type, int element,
                                             arrayRef, "offset_gep",
                                             insertAtEnd);
 #endif
-        if (m_is32Bit || gm->opt.force32BitAddressing)
+        if (m_is32Bit || m_force32BitAddressing)
             return new llvm::PtrToIntInst(gep, LLVMTypes::Int32Type,
                                           "offset_int", insertAtEnd);
         else
@@ -1479,7 +1467,6 @@ Target::StructOffset(llvm::Type *type, int element,
     llvm::StructType *structType =
         llvm::dyn_cast<llvm::StructType>(type);
     if (structType == NULL || structType->isSized() == false) {
-        Assert(m->errorCount > 0);
         return NULL;
     }
 
@@ -1487,22 +1474,10 @@ Target::StructOffset(llvm::Type *type, int element,
     Assert(sl != NULL);
 
     uint64_t offset = sl->getElementOffset(element);
-    if (m_is32Bit || gm->opt.force32BitAddressing)
+    if (m_is32Bit || m_force32BitAddressing)
         return LLVMInt32((int32_t)offset);
     else
         return LLVMInt64(offset);
-}
-
-void Target::markFuncWithTargetAttr(llvm::Function* func) {
-#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3
-    if (m_tf_attributes) {
-#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
-        func->addAttributes(llvm::AttributeSet::FunctionIndex, *m_tf_attributes);
-#else // LLVM 5.0+
-        func->addAttributes(llvm::AttributeList::FunctionIndex, *m_tf_attributes);
-#endif
-    }
-#endif
 }
 
 
@@ -1513,10 +1488,8 @@ OptimizationOptions::OptimizationOptions() {
     level = 1;
     fastMath = false;
     fastMaskedVload = false;
-    force32BitAddressing = true;
     unrollLoops = true;
     disableAsserts = false;
-    disableFMA = false;
     forceAlignedMemory = false;
     disableMaskAllOnOptimizations = false;
     disableHandlePseudoMemoryOps = false;
@@ -1650,7 +1623,7 @@ lSignal(void *) {
 }
 
 
-int ispcInit() {
+int ispcInit(bool moduleOptionsGlobal) {
     llvm::sys::AddSignalHandler(lSignal, NULL);
 
     // initialize available LLVM targets
@@ -1686,30 +1659,31 @@ int ispcInit() {
     // Initiailize globals early so that we can set various option values
     // as we're parsing below
     g = new GlobalOptions;
-    gm = new ModuleOptions;
-    gmGlobal = gm;
+
+    if (moduleOptionsGlobal) {
+        gmGlobal = true;
+        gm = new ModuleOptions;
+    }
+    else {
+        gmGlobal = false;
+        gm = NULL;
+    }
 
     return 0;
 }
 
 
-void ispcDeleteModuleOptionsGlobal() {
-  if (gm) {
-    // assert if it isn't the global instance.
-    assert(gm == gmGlobal);
-    delete gm;
-    gm = NULL;
-  }
-}
-
-
 void ispcTerminate() {
-  ispcDeleteModuleOptionsGlobal();
+    if (gmGlobal) {
+        delete gm;
+        gm = NULL;
+        gmGlobal = false;
+    }
 
-  if (g) {
-    delete g;
-    g = NULL;
-  }
+    if (g) {
+        delete g;
+        g = NULL;
+    }
 }
 
 _ISPC_END

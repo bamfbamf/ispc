@@ -114,6 +114,10 @@ public:
     void AddExportedTypes(const std::vector<std::pair<const Type *,
                                                       SourcePos> > &types);
 
+
+    /** Mark LLVM function with target specific attribute, if required. */
+    void markFuncWithTargetAttr(llvm::Function* func);
+
     /** After a source file has been compiled, output can be generated in a
         number of different formats. */
     enum OutputType { Asm,      /** Generate text assembly language output */
@@ -133,13 +137,7 @@ public:
         declarations of functions and types used in the ispc/application
         interface.
         @param srcFile      Pathname to ispc source file to compile
-        @param arch         %Target architecture (e.g. "x86-64")
-        @param cpu          %Target CPU (e.g. "core-i7")
-        @param targets      %Target ISAs; this parameter may give a single target
-                            ISA, or may give a comma-separated list of them in
-                            case we are compiling to multiple ISAs.
-        @param generatePIC  Indicates whether position-independent code should
-                            be generated.
+        @param targetOpt    Target options
         @param outputType   %Type of output to generate (object files, assembly,
                             LLVM bitcode.)
         @param outFileName  Base name of output filename for object files, etc.
@@ -158,9 +156,8 @@ public:
         @return             Number of errors encountered when compiling
                             srcFile.
      */
-    static int CompileAndOutput(const char *srcFile, const char *arch,
-                                const char *cpu, const char *targets,
-                                bool generatePIC,
+    static int CompileAndOutput(const char *srcFile,
+                                TargetOptions targetOpt,
                                 OutputType outputType,
                                 const char *outFileName,
                                 const char *headerFileName,
@@ -198,12 +195,22 @@ public:
 #endif // LLVM_3_4+
 
 private:
-    /** if module owns the creation of ModuleOptions. */
-    bool gmOwner;
-
+    /** LLVM module id */
     const char *moduleID;
 
+    /** File name */
     const char *filename;
+
+#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3
+    /** Target-specific LLVM attribute, which has to be attached to every
+    function to ensure that it is generated for correct target architecture.
+    This is requirement was introduced in LLVM 3.3 */
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
+    llvm::AttributeSet* m_tf_attributes;
+#else // LLVM 5.0+
+    llvm::AttrBuilder* m_tf_attributes;
+#endif
+#endif
 
     AST *ast;
 

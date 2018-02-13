@@ -1513,7 +1513,7 @@ lEmitBinaryPointerArith(BinaryExpr::Op op, llvm::Value *value0,
                 size = ctx->SmearUniform(size);
 
             if (m->target->is32Bit() == false &&
-                gm->opt.force32BitAddressing == true) {
+                m->target->isForce32BitAddressing() == true) {
                 // If we're doing 32-bit addressing math on a 64-bit
                 // target, then trunc the delta down to a 32-bit value.
                 // (Thus also matching what will be a 32-bit value
@@ -2097,7 +2097,7 @@ BinaryExpr::GetType() const {
             if (CastType<PointerType>(type1) != NULL) {
                 // ptr - ptr -> ~ptrdiff_t
                 const Type *diffType = (m->target->is32Bit() ||
-                                        gm->opt.force32BitAddressing) ?
+                                        m->target->isForce32BitAddressing()) ?
                     AtomicType::UniformInt32 : AtomicType::UniformInt64;
                 if (type0->IsVaryingType() || type1->IsVaryingType())
                     diffType = diffType->GetAsVaryingType();
@@ -4625,7 +4625,7 @@ IndexExpr::TypeCheck() {
                                        AtomicType::UniformUInt64) ||
               Type::EqualIgnoringConst(indexType->GetAsUniformType(),
                                        AtomicType::UniformInt64)) ||
-              m->target->is32Bit() || gm->opt.force32BitAddressing) {
+              m->target->is32Bit() || m->target->isForce32BitAddressing()) {
             const Type *indexType = AtomicType::VaryingInt32;
             index = TypeConvertExpr(index, indexType, "array index");
             if (index == NULL)
@@ -4642,7 +4642,7 @@ IndexExpr::TypeCheck() {
         //   However, the index can be still truncated to signed int32 if
         //   the index type is 64 bit and --addressing=32.
         bool force_32bit = m->target->is32Bit() ||
-            (gm->opt.force32BitAddressing &&
+            (m->target->isForce32BitAddressing() &&
              Type::EqualIgnoringConst(indexType->GetAsUniformType(),
                                       AtomicType::UniformInt64));
         const Type *indexType = force_32bit ?
@@ -7882,7 +7882,7 @@ SizeOfExpr::GetValue(FunctionEmitContext *ctx) const {
 
 const Type *
 SizeOfExpr::GetType() const {
-    return (m->target->is32Bit() || gm->opt.force32BitAddressing) ?
+    return (m->target->is32Bit() || m->target->isForce32BitAddressing()) ?
         AtomicType::UniformUInt32 : AtomicType::UniformUInt64;
 }
 
@@ -8609,7 +8609,7 @@ NewExpr::NewExpr(int typeQual, const Type *t, Expr *init, Expr *count,
 
 llvm::Value *
 NewExpr::GetValue(FunctionEmitContext *ctx) const {
-    bool do32Bit = (m->target->is32Bit() || gm->opt.force32BitAddressing);
+    bool do32Bit = (m->target->is32Bit() || m->target->isForce32BitAddressing());
 
     // Determine how many elements we need to allocate.  Note that this
     // will be a varying value if this is a varying new.
@@ -8648,7 +8648,7 @@ NewExpr::GetValue(FunctionEmitContext *ctx) const {
     if (isVarying) {
         if (m->target->is32Bit()) {
             func = m->module->getFunction("__new_varying32_32rt");
-        } else if (gm->opt.force32BitAddressing) {
+        } else if (m->target->isForce32BitAddressing()) {
             func = m->module->getFunction("__new_varying32_64rt");
         } else {
             func = m->module->getFunction("__new_varying64_64rt");
@@ -8785,7 +8785,7 @@ NewExpr::TypeCheck() {
     }
 
     // Figure out the type that the allocation count should be
-    const Type *t = (m->target->is32Bit() || gm->opt.force32BitAddressing) ?
+    const Type *t = (m->target->is32Bit() || m->target->isForce32BitAddressing()) ?
         AtomicType::UniformUInt32 : AtomicType::UniformUInt64;
     if (isVarying)
         t = t->GetAsVaryingType();

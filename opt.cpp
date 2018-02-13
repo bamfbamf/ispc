@@ -2512,7 +2512,7 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
         // If we're doing 32-bit addressing on a 64-bit target, here we
         // will see if we can call one of the 32-bit variants of the pseudo
         // gather/scatter functions.
-        if (gm->opt.force32BitAddressing &&
+        if (m->target->isForce32BitAddressing() &&
             lOffsets32BitSafe(&offsetVector, callInst)) {
             gatherScatterFunc = info->baseOffsets32Func;
         }
@@ -2569,7 +2569,7 @@ lGSToGSBaseOffsets(llvm::CallInst *callInst) {
         // If we're doing 32-bit addressing on a 64-bit target, here we
         // will see if we can call one of the 32-bit variants of the pseudo
         // gather/scatter functions.
-        if (gm->opt.force32BitAddressing &&
+        if (m->target->isForce32BitAddressing() &&
             lOffsets32BitSafe(&variableOffset, &constOffset, callInst)) {
             gatherScatterFunc = info->baseOffsets32Func;
         }

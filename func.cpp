@@ -596,7 +596,7 @@ Function::GenerateIR() {
                     }
                 }
 #endif
-                m->target->markFuncWithTargetAttr(appFunction);
+                m->markFuncWithTargetAttr(appFunction);
 
                 if (appFunction->getName() != functionName) {
                     // this was a redefinition for which we already emitted an

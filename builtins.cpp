@@ -852,7 +852,7 @@ lSetInternalFunctions(llvm::Module *module) {
         llvm::Function *f = module->getFunction(names[i]);
         if (f != NULL && f->empty() == false) {
             f->setLinkage(llvm::GlobalValue::InternalLinkage);
-            m->target->markFuncWithTargetAttr(f);
+            m->markFuncWithTargetAttr(f);
         }
     }
 }

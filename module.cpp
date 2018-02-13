@@ -143,6 +143,7 @@ extern yy_buffer_state *yy_create_buffer(FILE *, int);
 extern void yy_delete_buffer(yy_buffer_state *);
 extern void yy_switch_to_buffer(yy_buffer_state *);
 
+
 #define EXPORT_MODULE_DECL(export_module) \
     extern unsigned char export_module[]; \
     extern int export_module##_length;
@@ -153,6 +154,8 @@ extern bool WriteCXXFile(llvm::Module *module, const char *fn,
                          int vectorWidth, const char *includeName);
 
 _ISPC_BEGIN
+
+extern bool gmGlobal;
 
 /*! list of files encountered by the parser. this allows emitting of
     the module file's dependencies via the -MMM option */
@@ -177,7 +180,8 @@ lDeclareSizeAndPtrIntTypes(SymbolTable *symbolTable) {
                          SourcePos());
     symbolTable->AddType("ptrdiff_t", ptrIntType, SourcePos());
 
-    const Type *sizeType = (m->target->is32Bit() || gm->opt.force32BitAddressing) ?
+    const Type *sizeType = (m->target->is32Bit() ||
+                            m->target->isForce32BitAddressing()) ?
         AtomicType::VaryingUInt32 : AtomicType::VaryingUInt64;
     sizeType = sizeType->GetAsUnboundVariabilityType();
     symbolTable->AddType("size_t", sizeType, SourcePos());
@@ -401,6 +405,7 @@ lStripUnusedDebugInfo(llvm::Module *module) {
 #endif
 }
 
+
 static void
 BindModule(Module *module) {
   m = module;
@@ -408,16 +413,19 @@ BindModule(Module *module) {
 }
 
 
-Module::Module(const char *moduleID) {
+Module::Module(const char *moduleID) :
+    target(NULL),
+#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3 
+    m_tf_attributes(NULL)
+#endif
+{
     this->moduleID = moduleID;
 
-    if (_ISPC_NS::gm) {
-        gmOwner = false;
-        gm = _ISPC_NS::gm;
+    if (!_ISPC_NS::gmGlobal) {
+        gm = new ModuleOptions;
     }
     else {
-        gmOwner = true;
-        gm = new ModuleOptions;
+        gm = _ISPC_NS::gm;
     }
 
     errorCount = 0;
@@ -430,7 +438,7 @@ Module::Module(const char *moduleID) {
 
 
 Module::~Module() {
-    if (gmOwner) {
+    if (!_ISPC_NS::gmGlobal) {
         delete gm;
     }
 
@@ -495,6 +503,29 @@ Module::Compile(std::unique_ptr<llvm::MemoryBuffer> srcbuf) {
     BindModule(this);
 
     lDeclareSizeAndPtrIntTypes(symbolTable);
+
+#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3
+    // This is LLVM 3.3+ feature.
+    // Initialize target-specific "target-feature" attribute.
+    std::string attributes = target->getAttributes();
+    if (!attributes.empty()) {
+        llvm::AttrBuilder attrBuilder;
+#ifdef ISPC_NVPTX_ENABLED
+        if (m_isa != Target::NVPTX)
+#endif
+        attrBuilder.addAttribute("target-cpu", target->getCPU());
+        attrBuilder.addAttribute("target-features", attributes);
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
+        m_tf_attributes = new llvm::AttributeSet(
+            llvm::AttributeSet::get(
+                *m->ctx,
+                llvm::AttributeSet::FunctionIndex,
+                attrBuilder));
+#else // LLVM 5.0+
+        m_tf_attributes = new llvm::AttrBuilder(attrBuilder);
+#endif
+    }
+#endif
 
     if (g->generateDebuggingSymbols) {
 #if ISPC_LLVM_VERSION >= ISPC_LLVM_3_8
@@ -991,7 +1022,7 @@ Module::AddFunctionDeclaration(const std::string &name,
             const FunctionType *overloadType =
                 CastType<FunctionType>(overloadFunc->type);
             if (overloadType == NULL) {
-                Assert(m->errorCount == 0);
+                Assert(errorCount == 0);
                 continue;
             }
 
@@ -1070,7 +1101,7 @@ Module::AddFunctionDeclaration(const std::string &name,
     // Get the LLVM FunctionType
     bool disableMask = (storageClass == SC_EXTERN_C);
     llvm::FunctionType *llvmFunctionType =
-        functionType->LLVMFunctionType(m->ctx, disableMask);
+        functionType->LLVMFunctionType(ctx, disableMask);
     if (llvmFunctionType == NULL)
         return;
 
@@ -1084,11 +1115,11 @@ Module::AddFunctionDeclaration(const std::string &name,
         functionName += functionType->Mangle();
         // If we treat generic as smth, we should have appropriate mangling
         if (g->mangleFunctionsWithTarget) {
-            if (m->target->getISA() == Target::GENERIC && 
-                !m->target->getTreatGenericAsSmth().empty())
-                functionName += m->target->getTreatGenericAsSmth();
+            if (target->getISA() == Target::GENERIC && 
+                !target->getTreatGenericAsSmth().empty())
+                functionName += target->getTreatGenericAsSmth();
             else
-                functionName += m->target->GetISAString();
+                functionName += target->GetISAString();
         }
     }
     llvm::Function *function =
@@ -1115,7 +1146,7 @@ Module::AddFunctionDeclaration(const std::string &name,
     if (functionType->isTask)
 #ifdef ISPC_NVPTX_ENABLED
       /* evghenii: fails function verification when "if" executed in nvptx target */
-      if (m->target->getISA() != Target::NVPTX)
+      if (target->getISA() != Target::NVPTX)
 #endif /* ISPC_NVPTX_ENABLED */
         // This also applies transitively to members I think?
 #if ISPC_LLVM_VERSION < ISPC_LLVM_5_0
@@ -1124,7 +1155,7 @@ Module::AddFunctionDeclaration(const std::string &name,
         function->addParamAttr(0, llvm::Attribute::NoAlias);
 #endif
 
-    m->target->markFuncWithTargetAttr(function);
+    markFuncWithTargetAttr(function);
 
     // Make sure that the return type isn't 'varying' or vector typed if
     // the function is 'export'ed.
@@ -1138,7 +1169,7 @@ Module::AddFunctionDeclaration(const std::string &name,
         Error(pos, "Task-qualified functions must have void return type.");
 
 #ifdef ISPC_NVPTX_ENABLED
-    if (m->target->getISA() == Target::NVPTX &&
+    if (target->getISA() == Target::NVPTX &&
         Type::Equal(functionType->GetReturnType(), AtomicType::Void) == false &&
         functionType->isExported)
     {
@@ -1194,7 +1225,7 @@ Module::AddFunctionDeclaration(const std::string &name,
             function->addParamAttr(i, llvm::Attribute::NoAlias);
 #endif
 #if 0
-            int align = 4 * RoundUpPow2(m->target->nativeVectorWidth);
+            int align = 4 * RoundUpPow2(target->nativeVectorWidth);
             function->addAttribute(i+1, llvm::Attribute::constructAlignmentFromInt(align));
 #endif
         }
@@ -2689,6 +2720,19 @@ Module::execPreprocessor(llvm::MemoryBuffer* srcbuf,
 }
 
 
+void Module::markFuncWithTargetAttr(llvm::Function* func) {
+#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3
+    if (m_tf_attributes) {
+#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
+        func->addAttributes(llvm::AttributeSet::FunctionIndex, *m_tf_attributes);
+#else // LLVM 5.0+
+        func->addAttributes(llvm::AttributeList::FunctionIndex, *m_tf_attributes);
+#endif
+    }
+#endif
+}
+
+
 // Given an output filename of the form "foo.obj", and an ISA name like
 // "avx", return a string with the ISA name inserted before the original
 // filename's suffix, like "foo_avx.obj".
@@ -3144,10 +3188,7 @@ static std::string lCBEMangle(const std::string &S)
 
 int
 Module::CompileAndOutput(const char *srcFile,
-                         const char *arch,
-                         const char *cpu,
-                         const char *target,
-                         bool generatePIC,
+                         TargetOptions targetOpt,
                          OutputType outputType,
                          const char *outFileName,
                          const char *headerFileName,
@@ -3156,15 +3197,16 @@ Module::CompileAndOutput(const char *srcFile,
                          const char *hostStubFileName,
                          const char *devStubFileName)
 {
-    if (target == NULL || strchr(target, ',') == NULL) {
+    const char *ISA = targetOpt.isa;
+    if (ISA == NULL || strchr(ISA, ',') == NULL) {
+        Target *target = new Target(targetOpt, g->printTarget);
+        if (!target->isValid())
+          return 1;
+
         Module *m = new Module(srcFile);
         BindModule(m);
 
-        Target *tg = new Target(arch, cpu, target, generatePIC, g->printTarget);
-        if (!tg->isValid())
-            return 1;
-
-        m->SetTarget(tg);
+        m->SetTarget(target);
 
         if (m->CompileFile(srcFile) == 0) {
 #ifdef ISPC_NVPTX_ENABLED
@@ -3172,7 +3214,7 @@ Module::CompileAndOutput(const char *srcFile,
              * for PTX target replace '.' with '_' in all global variables 
              * a PTX identifier name must match [a-zA-Z$_][a-zA-Z$_0-9]*
              */
-            if (tg->getISA() == Target::NVPTX)
+            if (target->getISA() == Target::NVPTX)
             {
               /* mangle global variables names */
               {
@@ -3194,16 +3236,16 @@ Module::CompileAndOutput(const char *srcFile,
             }
 #endif /* ISPC_NVPTX_ENABLED */
             if (outputType == CXX) {
-                if (target == NULL || (strncmp(target, "generic-", 8) != 0
-                    && strstr(target, "-generic-") == NULL)) {
+                if (ISA == NULL || (strncmp(ISA, "generic-", 8) != 0
+                    && strstr(ISA, "-generic-") == NULL)) {
                     Error(SourcePos(), "When generating C++ output, one of the \"generic-*\" "
                           "targets must be used.");
                     return 1;
                 }
             }
             else if (outputType == Asm || outputType == Object) {
-                if (target != NULL && 
-                   (strncmp(target, "generic-", 8) == 0 || strstr(target, "-generic-") != NULL)) {
+                if (ISA != NULL &&
+                   (strncmp(ISA, "generic-", 8) == 0 || strstr(ISA, "-generic-") != NULL)) {
                     Error(SourcePos(), "When using a \"generic-*\" compilation target, "
                           "%s output can not be used.",
                           (outputType == Asm) ? "assembly" : "object file");
@@ -3232,8 +3274,8 @@ Module::CompileAndOutput(const char *srcFile,
 
         int errorCount = m->errorCount;
 
-        delete tg;
-        tg = NULL;
+        delete target;
+        target = NULL;
         delete m;
         m = NULL;
 
@@ -3251,15 +3293,15 @@ Module::CompileAndOutput(const char *srcFile,
                   "an intermediate temporary file.");
             return 1;
         }
-        if (cpu != NULL) {
+        if (targetOpt.cpu != NULL) {
             Error(SourcePos(), "Illegal to specify cpu type when compiling "
                   "for multiple targets.");
             return 1;
         }
 
         // The user supplied multiple targets
-        std::vector<std::string> targets = lExtractTargets(target);
-        Assert(targets.size() > 1);
+        std::vector<std::string> ISAs = lExtractTargets(ISA);
+        Assert(ISAs.size() > 1);
 
         if (outFileName != NULL && strcmp(outFileName, "-") == 0) {
             Error(SourcePos(), "Multi-target compilation can't generate output "
@@ -3283,7 +3325,7 @@ Module::CompileAndOutput(const char *srcFile,
         // Handle creating a "generic" header file for multiple targets
         // that use exported varyings
         DispatchHeaderInfo DHI;
-        if ((targets.size() > 1) && (headerFileName != NULL)) {
+        if ((ISAs.size() > 1) && (headerFileName != NULL)) {
             DHI.file  = fopen(headerFileName, "w");
             if (!DHI.file) {
                 perror("fopen");
@@ -3304,35 +3346,36 @@ Module::CompileAndOutput(const char *srcFile,
         // It indicates if we have *-generic target. 
         std::string treatGenericAsSmth = "";
 
-        for (unsigned int i = 0; i < targets.size(); ++i) {
+        for (unsigned int i = 0; i < ISAs.size(); ++i) {
+            targetOpt.isa = ISAs[i].c_str();
+            Target *target = new Target(targetOpt, g->printTarget);
+            if (!target->isValid())
+              return 1;
+
             Module *m = new Module(srcFile);
             BindModule(m);
 
-            Target *tg = new Target(arch, cpu, targets[i].c_str(), generatePIC, g->printTarget);
-            if (!tg->isValid())
-                return 1;
+            m->SetTarget(target);
 
-            m->SetTarget(tg);
-
-            if (!tg->getTreatGenericAsSmth().empty())
-                treatGenericAsSmth = tg->getTreatGenericAsSmth();
+            if (!target->getTreatGenericAsSmth().empty())
+                treatGenericAsSmth = target->getTreatGenericAsSmth();
 
             // Issue an error if we've already compiled to a variant of
             // this target ISA.  (It doesn't make sense to compile to both
             // avx and avx-x2, for example.)
-            if (targetMachines[tg->getISA()] != NULL) {
+            if (targetMachines[target->getISA()] != NULL) {
                 Error(SourcePos(), "Can't compile to multiple variants of %s "
-                      "target!\n", tg->GetISAString());
+                      "target!\n", target->GetISAString());
                 return 1;
             }
-            targetMachines[tg->getISA()] = tg->GetTargetMachine();
+            targetMachines[target->getISA()] = target->GetTargetMachine();
 
             if (m->CompileFile(srcFile) == 0) {
                 // Create the dispatch module, unless already created;
                 // in the latter case, just do the checking
                 bool check = (dispatchModule != NULL);
                 if (!check)
-                    dispatchModule = lInitDispatchModule(m->ctx, tg);
+                    dispatchModule = lInitDispatchModule(m->ctx, target);
                 lExtractOrCheckGlobals(m, dispatchModule, check);
 
                 // Grab pointers to the exported functions from the module we
@@ -3343,15 +3386,15 @@ Module::CompileAndOutput(const char *srcFile,
                 if (outFileName != NULL) {
                     std::string targetOutFileName;
                     // We always generate cpp file for *-generic target during multitarget compilation
-                    if (tg->getISA() == Target::GENERIC && 
-                        !tg->getTreatGenericAsSmth().empty()) {
+                    if (target->getISA() == Target::GENERIC &&
+                        !target->getTreatGenericAsSmth().empty()) {
                         targetOutFileName = lGetTargetFileName(outFileName, 
-                                                tg->getTreatGenericAsSmth().c_str(), true);
+                                                target->getTreatGenericAsSmth().c_str(), true);
                         if (!m->writeOutput(CXX, targetOutFileName.c_str(), includeFileName))
                             return 1;
                     }
                     else {
-                        const char *isaName = tg->GetISAString();
+                        const char *isaName = target->GetISAString();
                         targetOutFileName = lGetTargetFileName(outFileName, isaName, false);
                         if (!m->writeOutput(outputType, targetOutFileName.c_str()))
                             return 1;
@@ -3369,33 +3412,33 @@ Module::CompileAndOutput(const char *srcFile,
             // Only write the generate header file, if desired, the first
             // time through the loop here.
             if (headerFileName != NULL) {
-              if (i == targets.size()-1) {
-                // only print backmatter on the last target.
-                DHI.EmitBackMatter = true;
-              }
+                if (i == ISAs.size()-1) {
+                  // only print backmatter on the last target.
+                  DHI.EmitBackMatter = true;
+                }
 
-              const char *isaName;
-              if (tg->getISA() == Target::GENERIC &&
-                        !tg->getTreatGenericAsSmth().empty())
-                  isaName = tg->getTreatGenericAsSmth().c_str();
-              else
-                  isaName = tg->GetISAString();
-              std::string targetHeaderFileName =
-                lGetTargetFileName(headerFileName, isaName, false);
-              // write out a header w/o target name for the first target only
-              if (!m->writeOutput(Module::Header, headerFileName, "", &DHI)) {
-                return 1;
-              }
-              if (!m->writeOutput(Module::Header, targetHeaderFileName.c_str())) {
-                return 1;
-              }
-              if (i == targets.size()-1) {
-                fclose(DHI.file);
-              }
+                const char *isaName;
+                if (target->getISA() == Target::GENERIC &&
+                          !target->getTreatGenericAsSmth().empty())
+                    isaName = target->getTreatGenericAsSmth().c_str();
+                else
+                    isaName = target->GetISAString();
+                std::string targetHeaderFileName =
+                  lGetTargetFileName(headerFileName, isaName, false);
+                // write out a header w/o target name for the first target only
+                if (!m->writeOutput(Module::Header, headerFileName, "", &DHI)) {
+                  return 1;
+                }
+                if (!m->writeOutput(Module::Header, targetHeaderFileName.c_str())) {
+                  return 1;
+                }
+                if (i == ISAs.size()-1) {
+                  fclose(DHI.file);
+                }
             }
 
-            delete tg;
-            tg = NULL;
+            delete target;
+            target = NULL;
             delete m;
             m = NULL;
 
@@ -3417,8 +3460,9 @@ Module::CompileAndOutput(const char *srcFile,
         }
         Assert(firstTargetMachine != NULL);
 
-        Target *tg = new Target(arch, cpu, firstISA, generatePIC, false, treatGenericAsSmth);
-        if (!tg->isValid()) {
+        targetOpt.isa = firstISA;
+        Target *target = new Target(targetOpt, false, treatGenericAsSmth);
+        if (!target->isValid()) {
             return 1;
         }
 
@@ -3436,8 +3480,8 @@ Module::CompileAndOutput(const char *srcFile,
             if (!m->writeOutput(Module::Deps, depsFileName))
                 return 1;
 
-        delete tg;
-        tg = NULL;
+        delete target;
+        target = NULL;
 
         return errorCount > 0;
     }

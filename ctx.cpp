@@ -2299,10 +2299,10 @@ FunctionEmitContext::applyVaryingGEP(llvm::Value *basePtr, llvm::Value *index,
     if (indexIsVarying == false) {
         // Truncate or sign extend the index as appropriate to a 32 or
         // 64-bit type.
-        if ((m->target->is32Bit() || gm->opt.force32BitAddressing) &&
+        if ((m->target->is32Bit() || m->target->isForce32BitAddressing()) &&
             index->getType() == LLVMTypes::Int64Type)
             index = TruncInst(index, LLVMTypes::Int32Type);
-        else if ((!m->target->is32Bit() && !gm->opt.force32BitAddressing) &&
+        else if ((!m->target->is32Bit() && !m->target->isForce32BitAddressing()) &&
                  index->getType() == LLVMTypes::Int32Type)
             index = SExtInst(index, LLVMTypes::Int64Type);
 
@@ -2316,10 +2316,10 @@ FunctionEmitContext::applyVaryingGEP(llvm::Value *basePtr, llvm::Value *index,
     else {
         // Similarly, truncate or sign extend the index to be a 32 or 64
         // bit vector type
-        if ((m->target->is32Bit() || gm->opt.force32BitAddressing) &&
+        if ((m->target->is32Bit() || m->target->isForce32BitAddressing()) &&
             index->getType() == LLVMTypes::Int64VectorType)
             index = TruncInst(index, LLVMTypes::Int32VectorType);
-        else if ((!m->target->is32Bit() && !gm->opt.force32BitAddressing) &&
+        else if ((!m->target->is32Bit() && !m->target->isForce32BitAddressing()) &&
                  index->getType() == LLVMTypes::Int32VectorType)
             index = SExtInst(index, LLVMTypes::Int64VectorType);
 
@@ -2333,7 +2333,7 @@ FunctionEmitContext::applyVaryingGEP(llvm::Value *basePtr, llvm::Value *index,
     // For 64-bit targets, if we've been doing our offset calculations in
     // 32 bits, we still have to convert to a 64-bit value before we
     // actually add the offset to the pointer.
-    if (m->target->is32Bit() == false && gm->opt.force32BitAddressing == true)
+    if (m->target->is32Bit() == false && m->target->isForce32BitAddressing() == true)
         offset = SExtInst(offset, LLVMTypes::Int64VectorType,
                           LLVMGetName(offset, "_to_64"));
 
@@ -2702,14 +2702,14 @@ FunctionEmitContext::AddElementOffset(llvm::Value *fullBasePtr, int elementNum,
             AssertPos(currentPos, st != NULL);
             llvm::Value *size =
                 m->target->SizeOf(st->GetElementType()->LLVMType(&ctx), bblock);
-            llvm::Value *scale = (m->target->is32Bit() || gm->opt.force32BitAddressing) ?
+            llvm::Value *scale = (m->target->is32Bit() || m->target->isForce32BitAddressing()) ?
                 LLVMInt32(elementNum) : LLVMInt64(elementNum);
             offset = BinaryOperator(llvm::Instruction::Mul, size, scale);
         }
 
         offset = SmearUniform(offset, "offset_smear");
 
-        if (m->target->is32Bit() == false && gm->opt.force32BitAddressing == true)
+        if (m->target->is32Bit() == false && m->target->isForce32BitAddressing() == true)
             // If we're doing 32 bit addressing with a 64 bit target, although
             // we did the math above in 32 bit, we need to go to 64 bit before
             // we add the offset to the varying pointers.
@@ -4134,13 +4134,13 @@ FunctionEmitContext::addVaryingOffsetsIfNeeded(llvm::Value *ptr,
     unifSize = SmearUniform(unifSize);
 
     // Compute offset = <0, 1, .. > * unifSize
-    bool is32bits = target->is32Bit() || gm->opt.force32BitAddressing;
+    bool is32bits = target->is32Bit() || m->target->isForce32BitAddressing();
     llvm::Value *varyingOffsets = ProgramIndexVector(is32bits);
 
     llvm::Value *offset = BinaryOperator(llvm::Instruction::Mul, unifSize,
                                          varyingOffsets);
 
-    if (gm->opt.force32BitAddressing == true && target->is32Bit() == false)
+    if (m->target->isForce32BitAddressing() == true && target->is32Bit() == false)
         // On 64-bit targets where we're doing 32-bit addressing
         // calculations, we need to convert to an i64 vector before adding
         // to the pointer

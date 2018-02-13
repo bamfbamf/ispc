@@ -159,10 +159,8 @@ struct SourcePos {
 };
 
 
-/** Returns a SourcePos that encompasses the extent of both of the given
-    extents. */
+/** Returns a SourcePos that encompasses the extent of both of the given extents. */
 SourcePos Union(const SourcePos &p1, const SourcePos &p2);
-
 
 
 // Assert
@@ -177,7 +175,40 @@ extern void DoAssertPos(SourcePos pos, const char *file, int line, const char *e
     ((void)((expr) ? 0 : ((void)DoAssertPos (pos, __FILE__, __LINE__, #expr), 0)))
 
 
-/** @brief Structure that defines a compilation target
+/** @brief Structure that collects target options.
+
+    This structure collects all of the options related to target creation.
+*/
+struct TargetOptions {
+    TargetOptions();
+
+    /** Target architecture (e.g. "x86-64"). */
+    const char *arch;
+
+    /** Target CPU (e.g. "core-i7"). */
+    const char *cpu;
+
+    /** Target ISAs; may give a single target ISA, or may give a comma
+        separated list of them in case we are compiling to multiple ISAs.
+        (Multiple ISAs not supported on JIT). */
+    const char *isa;
+
+    /** Indicates if position independent code should be generated. */
+    bool pic;
+
+    /** Indicates if addressing math will be done with 32-bit math, even on
+        64-bit systems. (This is generally noticably more efficient,
+        though at the cost of addressing >2GB).
+    */
+    bool force32BitAddressing;
+
+    /** Indicates whether FMA instructions should be disabled (on targets
+    that support them). */
+    bool disableFMA;
+};
+
+
+/** @brief Structure that defines a compilation target.
 
     This structure defines a compilation target for the ispc compiler.
 */
@@ -207,11 +238,8 @@ public:
         NUM_ISAS
     };
 
-    /** Initializes the given Target pointer for a target of the given
-        name, if the name is a known target.  Returns true if the
-        target was initialized and false if the name is unknown. */
-    Target(const char *arch, const char *cpu, const char *isa, bool pic,
-           bool printTarget, std::string genenricAsSmth = "");
+    /** Target constructor. */
+    Target(TargetOptions opt, bool printTarget, std::string genericAsSmth = "");
 
     /** Returns a comma-delimited string giving the names of the currently
         supported compilation targets. */
@@ -256,9 +284,6 @@ public:
     llvm::Value *StructOffset(llvm::Type *type,
                               int element, llvm::BasicBlock *insertAtEnd);
 
-    /** Mark LLVM function with target specific attribute, if required. */
-    void markFuncWithTargetAttr(llvm::Function* func);
-
     const llvm::Target *getTarget() const {return m_target;}
 
     // Note the same name of method for 3.1 and 3.2+, this allows
@@ -276,7 +301,11 @@ public:
 
     bool is32Bit() const {return m_is32Bit;}
 
+    bool isForce32BitAddressing() const { return m_force32BitAddressing; }
+
     std::string getCPU() const {return m_cpu;}
+
+    std::string getAttributes() const {return m_attributes;}
 
     int getNativeVectorWidth() const {return m_nativeVectorWidth;}
 
@@ -342,22 +371,14 @@ private:
     /** Is the target architecture 32 or 64 bit */
     bool m_is32Bit;
 
+    /** Indicates if addressing math will be done with 32-bit math */
+    bool m_force32BitAddressing;
+
     /** Target CPU. (e.g. "corei7", "corei7-avx", ..) */
     std::string m_cpu;
 
     /** Target-specific attribute string to pass along to the LLVM backend */
     std::string m_attributes;
-
-#if ISPC_LLVM_VERSION >= ISPC_LLVM_3_3
-    /** Target-specific LLVM attribute, which has to be attached to every
-        function to ensure that it is generated for correct target architecture.
-        This is requirement was introduced in LLVM 3.3 */
-#if ISPC_LLVM_VERSION <= ISPC_LLVM_4_0
-    llvm::AttributeSet* m_tf_attributes;
-#else // LLVM 5.0+
-    llvm::AttrBuilder* m_tf_attributes;
-#endif
-#endif
 
     /** Native vector width of the vector instruction set.  Note that this
         value is directly derived from the ISA being used (e.g. it's 4 for
@@ -452,19 +473,9 @@ struct OptimizationOptions {
         it will make sense. */
     bool unrollLoops;
 
-    /** Indicates if addressing math will be done with 32-bit math, even on
-        64-bit systems.  (This is generally noticably more efficient,
-        though at the cost of addressing >2GB).
-     */
-    bool force32BitAddressing;
-
     /** Indicates whether Assert() statements should be ignored (for
         performance in the generated code). */
     bool disableAsserts;
-
-    /** Indicates whether FMA instructions should be disabled (on targets
-        that support them). */
-    bool disableFMA;
 
     /** Always generate aligned vector load/store instructions; this
         implies a guarantee that all dynamic access through pointers that
@@ -532,6 +543,47 @@ struct OptimizationOptions {
     /** Disables optimizations that coalesce incoherent scalar memory
         access from gathers into wider vector operations, when possible. */
     bool disableCoalescing;
+};
+
+
+/** @brief Structure that collects per module options.
+*/
+struct ModuleOptions {
+  ModuleOptions();
+
+  /** Optimization option settings */
+  OptimizationOptions opt;
+
+  /** There are a number of math libraries that can be used for
+  transcendentals and the like during program compilation. */
+  enum MathLib { Math_ISPC, Math_ISPCFast, Math_SVML, Math_System };
+  MathLib mathLib;
+
+  /** Records whether the ispc standard library should be made available
+  to the program during compilations. (Default is true.) */
+  bool includeStdlib;
+
+  /** Indicates whether the C pre-processor should be run over the
+  program source before compiling it.  (Default is true.) */
+  bool runCPP;
+
+  /** Indicates which phases of optimization we want to switch off. */
+  std::set<int> off_stages;
+
+  /** Arguments to pass along to the C pre-processor, if it is run on the
+  program before compilation. */
+  std::vector<std::string> cppArgs;
+
+  /** Additional user-provided directories to search when processing
+  #include directives in the preprocessor. */
+  std::vector<std::string> includePath;
+
+  /** Indicates that alignment in memory allocation routines should be
+  forced to have given value. -1 value means natural alignment for the platforms. */
+  int forceAlignment;
+
+  /** When true, flag non-static functions with dllexport attribute on Windows. */
+  bool dllExport;
 };
 
 
@@ -640,47 +692,6 @@ struct GlobalOptions {
 };
 
 
-/** @brief Structure that collects per module options.
-*/
-struct ModuleOptions {
-  ModuleOptions();
-
-  /** Optimization option settings */
-  OptimizationOptions opt;
-
-  /** There are a number of math libraries that can be used for
-  transcendentals and the like during program compilation. */
-  enum MathLib { Math_ISPC, Math_ISPCFast, Math_SVML, Math_System };
-  MathLib mathLib;
-
-  /** Records whether the ispc standard library should be made available
-  to the program during compilations. (Default is true.) */
-  bool includeStdlib;
-
-  /** Indicates whether the C pre-processor should be run over the
-  program source before compiling it.  (Default is true.) */
-  bool runCPP;
-
-  /** Indicates which phases of optimization we want to switch off. */
-  std::set<int> off_stages;
-
-  /** Arguments to pass along to the C pre-processor, if it is run on the
-  program before compilation. */
-  std::vector<std::string> cppArgs;
-
-  /** Additional user-provided directories to search when processing
-  #include directives in the preprocessor. */
-  std::vector<std::string> includePath;
-
-  /** Indicates that alignment in memory allocation routines should be
-  forced to have given value. -1 value means natural alignment for the platforms. */
-  int forceAlignment;
-
-  /** When true, flag non-static functions with dllexport attribute on Windows. */
-  bool dllExport;
-};
-
-
 enum {
     COST_ASSIGN = 1,
     COST_COMPLEX_ARITH_OP = 4,
@@ -719,13 +730,10 @@ extern ModuleOptions *gm;
 extern Module *m;
 
 /** Initializes the ISPC library. */
-int ispcInit();
+int ispcInit(bool moduleOptionsGlobal = false);
 
 /** Terminates the ISPC library. */
 void ispcTerminate();
-
-/** Delete global module options. */
-void ispcDeleteModuleOptionsGlobal();
 
 _ISPC_END
 

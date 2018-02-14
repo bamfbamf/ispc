@@ -43,19 +43,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LambdaResolver.h>
+#include <llvm/IR/Mangler.h>
 
 _ISPC_BEGIN
 
 IspcJIT::IspcJIT() :
-    TM(llvm::EngineBuilder().selectTarget()),
-    DL(TM->createDataLayout()) {
-    memMgr = std::make_shared<llvm::SectionMemoryManager>();
-
-    std::function<std::shared_ptr<llvm::RuntimeDyld::MemoryManager>()>
-        getMemMgr = [&]() { return memMgr; };
-
-    linkLayer = new LinkLayer(getMemMgr);
-    compiler = new Compiler(*TM);    compileLayer = new CompileLayer(*linkLayer, *compiler);
+    target(NULL),
+    compiler(NULL),
+    compileLayer(NULL),
+    linkLayer(NULL) {
 }
 
 
@@ -66,12 +62,28 @@ IspcJIT::~IspcJIT() {
 }
 
 
-llvm::TargetMachine &IspcJIT::getTargetMachine() {
-    return *TM;
+int IspcJIT::initExecutionEngine(Target *target) {
+    assert(this->target == NULL);
+
+    llvm::TargetMachine *TM = target->getTargetMachine();
+
+    memMgr = std::make_shared<llvm::SectionMemoryManager>();
+
+    std::function<std::shared_ptr<llvm::RuntimeDyld::MemoryManager>()>
+        getMemMgr = [&]() { return memMgr; };    linkLayer = new LinkLayer(getMemMgr);
+
+    compiler = new Compiler(*TM);
+    compileLayer = new CompileLayer(*linkLayer, *compiler);
+
+    this->target = target;
+
+    return 0;
 }
 
 
-IspcJIT::ModuleHandle IspcJIT::addModule(llvm::Module *M) {
+IspcJIT::ModuleHandle IspcJIT::addModule(Module *M) {
+    assert(target == M->GetTarget());
+
     auto resolver = llvm::orc::createLambdaResolver(
         [&](const std::string &name) {
           if (auto sym = compileLayer->findSymbol(name, false))
@@ -85,15 +97,27 @@ IspcJIT::ModuleHandle IspcJIT::addModule(llvm::Module *M) {
           return llvm::JITSymbol(nullptr);
         });
 
-    std::shared_ptr<llvm::Module> sModule(M);
+    std::shared_ptr<llvm::Module> sModule(M->module);
 
     return llvm::cantFail(compileLayer->addModule(std::move(sModule),
                                                   std::move(resolver)));
 }
 
 
+static
+std::string mangle(llvm::StringRef name, const llvm::DataLayout &DL) {
+    std::string mangledName;
+    {
+        llvm::raw_string_ostream mangledNameStream(mangledName);
+        llvm::Mangler::getNameWithPrefix(mangledNameStream, name, DL);
+    }
+    return mangledName;
+}
+
+
 llvm::JITSymbol IspcJIT::findSymbol(llvm::StringRef name) {
-    return compileLayer->findSymbol(name, true);
+  std::string mangledName = mangle(name, *target->getDataLayout());
+  return compileLayer->findSymbol(mangledName, false);
 }
 
 

@@ -41,6 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef ISPC_LIBISPC_ENABLED
 
 #include "ispc.h"
+#include "module.h"
 
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
 #include <llvm/ExecutionEngine/Orc/IRCompileLayer.h>
@@ -82,11 +83,11 @@ public:
     /** The IspcJIT destructor. */
     ~IspcJIT();
 
-    /** Returns the target machine. */
-    llvm::TargetMachine &getTargetMachine();
+    /** Init LLVM ORC. */
+    int initExecutionEngine(Target *target);
 
     /** Add module. */
-    ModuleHandle addModule(llvm::Module *module);
+    ModuleHandle addModule(Module *module);
 
     /** Remove module. */
     void removeModule(ModuleHandle H);
@@ -95,10 +96,9 @@ public:
     llvm::JITSymbol findSymbol(llvm::StringRef name);
 
 private:
-    /** The target machine. */
-    std::unique_ptr<llvm::TargetMachine> TM;
-    /** The data layout. */
-    const llvm::DataLayout DL;
+
+    /** The target. */
+    Target *target;
 
     /** Compiler. */
     Compiler *compiler;    /** Compile layer. */

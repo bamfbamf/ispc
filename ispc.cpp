@@ -94,6 +94,7 @@
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/Host.h>
+#include "llvm/MC/MCInstrInfo.h"
 
 _ISPC_BEGIN
 
@@ -536,8 +537,10 @@ Target::Target(TargetOptions opt, bool printTarget, std::string genericAsSmth) :
                 // No CPU and no ISA, so use system info to figure out
                 // what this CPU supports.
                 opt.isa = lGetSystemISA();
+#ifndef ISPC_LIBISPC_ENABLED
                 Warning(SourcePos(), "No --target specified on command-line."
                         " Using default system target \"%s\".", opt.isa);
+#endif
                 break;
 
             case CPU_Generic:
@@ -597,10 +600,12 @@ Target::Target(TargetOptions opt, bool printTarget, std::string genericAsSmth) :
                 opt.isa = "sse2-i32x4";
                 break;
         }
+#ifndef ISPC_LIBISPC_ENABLED
         if (CPUID != CPU_None)
             Warning(SourcePos(), "No --target specified on command-line."
                     " Using ISA \"%s\" based on specified CPU \"%s\".",
                     opt.isa, opt.cpu);
+#endif
     }
 
     if (!strcasecmp(opt.isa, "host")) {
@@ -1179,9 +1184,10 @@ Target::Target(TargetOptions opt, bool printTarget, std::string genericAsSmth) :
     m_valid = !error;
 
     if (printTarget) {
-        printf("Target Triple: %s\n", m_targetMachine->getTargetTriple().str().c_str());
-        printf("Target CPU: %s\n", m_targetMachine->getTargetCPU().str().c_str());
-        printf("Target Feature String: %s\n", m_targetMachine->getTargetFeatureString().str().c_str());
+        printf("LLVM Target: %s, %s\n",
+            m_targetMachine->getTargetTriple().str().c_str(),
+            m_targetMachine->getTargetCPU().str().c_str());
+        //printf("LLVM target feature string: %s\n", m_targetMachine->getTargetFeatureString().str().c_str());
     }
 
     return;

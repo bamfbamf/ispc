@@ -68,7 +68,10 @@ public:
     /** The Module destructor. */
     ~Module();
 
-    /** Set the target. */
+    /** Gets the target. */
+    const Target *GetTarget() const { return target; }
+
+    /** Sets the target. */
     void SetTarget(Target *target);
 
     /** Compiles the source file passed as argument, adding

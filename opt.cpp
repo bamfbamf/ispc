@@ -578,7 +578,7 @@ Optimize(llvm::Module *module, int optLevel) {
     optPM.add(dlp);
 #endif // LLVM 3.7+ doesn't have DataLayoutPass anymore.
 
-    llvm::TargetMachine *targetMachine = m->target->GetTargetMachine();
+    llvm::TargetMachine *targetMachine = m->target->getTargetMachine();
 
 #if ISPC_LLVM_VERSION == ISPC_LLVM_3_2
     optPM.add(new llvm::TargetTransformInfo(targetMachine->getScalarTargetTransformInfo(),

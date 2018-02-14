@@ -239,7 +239,7 @@ public:
     };
 
     /** Target constructor. */
-    Target(TargetOptions opt, bool printTarget, std::string genericAsSmth = "");
+    Target(TargetOptions opt, bool printTarget = false, std::string genericAsSmth = "");
 
     /** Returns a comma-delimited string giving the names of the currently
         supported compilation targets. */
@@ -256,10 +256,6 @@ public:
     /** Returns a triple string specifying the target architecture, vendor,
         and environment. */
     std::string GetTripleString() const;
-
-    /** Returns the LLVM TargetMachine object corresponding to this
-        target. */
-    llvm::TargetMachine *GetTargetMachine() const {return m_targetMachine;}
 
     /** Convert ISA enum to string */
     static const char *ISAToString(Target::ISA isa);
@@ -285,6 +281,9 @@ public:
                               int element, llvm::BasicBlock *insertAtEnd);
 
     const llvm::Target *getTarget() const {return m_target;}
+
+    /** Returns the LLVM TargetMachine object corresponding to this target. */
+    llvm::TargetMachine *getTargetMachine() {return m_targetMachine;}
 
     // Note the same name of method for 3.1 and 3.2+, this allows
     // to reduce number ifdefs on client side.

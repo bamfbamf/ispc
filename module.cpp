@@ -1573,7 +1573,7 @@ Module::writeBitcode(llvm::Module *module, const char *outFileName) {
 
 bool
 Module::writeObjectFileOrAssembly(OutputType outputType, const char *outFileName) {
-    llvm::TargetMachine *targetMachine = m->target->GetTargetMachine();
+    llvm::TargetMachine *targetMachine = m->target->getTargetMachine();
     return writeObjectFileOrAssembly(targetMachine, module, outputType,
                                      outFileName);
 }
@@ -3368,7 +3368,7 @@ Module::CompileAndOutput(const char *srcFile,
                       "target!\n", target->GetISAString());
                 return 1;
             }
-            targetMachines[target->getISA()] = target->GetTargetMachine();
+            targetMachines[target->getISA()] = target->getTargetMachine();
 
             if (m->CompileFile(srcFile) == 0) {
                 // Create the dispatch module, unless already created;

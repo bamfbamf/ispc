@@ -1124,7 +1124,7 @@ Target::Target(TargetOptions opt, bool printTarget, std::string genericAsSmth) :
 #endif
         m_targetMachine =
             m_target->createTargetMachine(triple, m_cpu, featuresString, options,
-                    relocModel);
+                    relocModel, llvm::CodeModel::Large);
         Assert(m_targetMachine != NULL);
 
 #if ISPC_LLVM_VERSION <= ISPC_LLVM_3_6

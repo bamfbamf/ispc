@@ -65,14 +65,14 @@ IspcJIT::~IspcJIT() {
 int IspcJIT::initExecutionEngine(Target *target) {
     assert(this->target == NULL);
 
-    llvm::TargetMachine *TM = target->getTargetMachine();
-
     memMgr = std::make_shared<llvm::SectionMemoryManager>();
 
     std::function<std::shared_ptr<llvm::RuntimeDyld::MemoryManager>()>
         getMemMgr = [&]() { return memMgr; };    linkLayer = new LinkLayer(getMemMgr);
 
+    llvm::TargetMachine *TM = target->getTargetMachine();
     compiler = new Compiler(*TM);
+
     compileLayer = new CompileLayer(*linkLayer, *compiler);
 
     this->target = target;
@@ -86,20 +86,20 @@ IspcJIT::ModuleHandle IspcJIT::addModule(Module *M) {
 
     auto resolver = llvm::orc::createLambdaResolver(
         [&](const std::string &name) {
-          if (auto sym = compileLayer->findSymbol(name, false))
-            return sym;
-          return llvm::JITSymbol(nullptr);
+            if (auto sym = compileLayer->findSymbol(name, false))
+                return sym;
+            return llvm::JITSymbol(nullptr);
         },
         [](const std::string &name) {
-          if (auto symAddr =
-                llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name))
-            return llvm::JITSymbol(symAddr, llvm::JITSymbolFlags::Exported);
-          return llvm::JITSymbol(nullptr);
+            if (auto symAddr =
+                    llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name))
+                return llvm::JITSymbol(symAddr, llvm::JITSymbolFlags::Exported);
+            return llvm::JITSymbol(nullptr);
         });
 
-    std::shared_ptr<llvm::Module> sModule(M->module);
+    std::shared_ptr<llvm::Module> moduleShared(M->module, [](llvm::Module*){});
 
-    return llvm::cantFail(compileLayer->addModule(std::move(sModule),
+    return llvm::cantFail(compileLayer->addModule(std::move(moduleShared),
                                                   std::move(resolver)));
 }
 
@@ -116,8 +116,8 @@ std::string mangle(llvm::StringRef name, const llvm::DataLayout &DL) {
 
 
 llvm::JITSymbol IspcJIT::findSymbol(llvm::StringRef name) {
-  std::string mangledName = mangle(name, *target->getDataLayout());
-  return compileLayer->findSymbol(mangledName, false);
+    std::string mangledName = mangle(name, *target->getDataLayout());
+    return compileLayer->findSymbol(mangledName, false);
 }
 
 

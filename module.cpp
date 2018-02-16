@@ -419,7 +419,7 @@ Module::Module(const char *moduleID) :
     m_tf_attributes(NULL)
 #endif
 {
-    this->moduleID = moduleID;
+    this->moduleID = (moduleID ? moduleID : "<stdin>");
 
     if (!_ISPC_NS::gmGlobal) {
         gm = new ModuleOptions;
@@ -433,7 +433,7 @@ Module::Module(const char *moduleID) :
     ast = new AST;
 
     ctx = new llvm::LLVMContext;
-    module = new llvm::Module(moduleID ? moduleID : "<stdin>", *ctx);
+    module = new llvm::Module(this->moduleID, *ctx);
 }
 
 
